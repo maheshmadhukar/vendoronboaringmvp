@@ -1,0 +1,302 @@
+import { PrismaClient } from "@prisma/client";
+import bcrypt from "bcryptjs";
+import { computeDueAt } from "../lib/sla";
+
+const prisma = new PrismaClient();
+const PW = "demo1234";
+const CUTOFF = 14;
+
+function daysAgo(n: number) {
+  return new Date(Date.now() - n * 24 * 60 * 60 * 1000);
+}
+
+async function main() {
+  // wipe (order matters for FKs)
+  await prisma.notification.deleteMany();
+  await prisma.auditLog.deleteMany();
+  await prisma.comment.deleteMany();
+  await prisma.document.deleteMany();
+  await prisma.deptReview.deleteMany();
+  await prisma.otpCode.deleteMany();
+  await prisma.invite.deleteMany();
+  await prisma.user.deleteMany();
+  await prisma.vendor.deleteMany();
+  await prisma.documentType.deleteMany();
+  await prisma.department.deleteMany();
+  await prisma.config.deleteMany();
+
+  const hash = await bcrypt.hash(PW, 10);
+
+  await prisma.config.create({ data: { id: 1 } });
+
+  // Departments
+  const deptDefs = [
+    { key: "PROCUREMENT", name: "Procurement" },
+    { key: "FINANCE", name: "Finance" },
+    { key: "LEGAL", name: "Legal" },
+    { key: "HR", name: "HR" },
+  ];
+  const depts: Record<string, string> = {};
+  for (const d of deptDefs) {
+    const rec = await prisma.department.create({ data: { key: d.key, name: d.name, slaDays: 5 } });
+    depts[d.key] = rec.id;
+  }
+
+  // Admin
+  await prisma.user.create({
+    data: { email: "admin@buyer.com", name: "Aarti Nair", role: "ADMIN", passwordHash: hash },
+  });
+
+  // Dept managers (primary + secondary)
+  const mgr = [
+    { dept: "FINANCE", email: "finance.mgr@buyer.com", name: "Neha Iyer", role: "PRIMARY" },
+    { dept: "FINANCE", email: "finance.mgr2@buyer.com", name: "Sanjay Rao", role: "SECONDARY" },
+    { dept: "LEGAL", email: "legal.mgr@buyer.com", name: "Priya Sharma", role: "PRIMARY" },
+    { dept: "LEGAL", email: "legal.mgr2@buyer.com", name: "Imran Qureshi", role: "SECONDARY" },
+    { dept: "HR", email: "hr.mgr@buyer.com", name: "Divya Menon", role: "PRIMARY" },
+    { dept: "HR", email: "hr.mgr2@buyer.com", name: "Rahul Nanda", role: "SECONDARY" },
+    { dept: "PROCUREMENT", email: "proc.mgr@buyer.com", name: "Rohan Mehta", role: "PRIMARY" },
+    { dept: "PROCUREMENT", email: "proc.mgr2@buyer.com", name: "Kavya Pillai", role: "SECONDARY" },
+  ];
+  for (const m of mgr) {
+    const u = await prisma.user.create({
+      data: {
+        email: m.email, name: m.name, role: "DEPT", managerRole: m.role,
+        passwordHash: hash, departmentId: depts[m.dept],
+      },
+    });
+    await prisma.department.update({
+      where: { id: depts[m.dept] },
+      data: m.role === "PRIMARY" ? { primaryManagerId: u.id } : { secondaryManagerId: u.id },
+    });
+  }
+
+  // Document types (routing per approved mapping)
+  const docDefs = [
+    { key: "VENDOR_FORM", name: "Vendor Registration Form", dept: "PROCUREMENT", helper: "PDF/DOC, max 5MB" },
+    { key: "PAN", name: "PAN Card", dept: "FINANCE", helper: "PDF only, max 5MB" },
+    { key: "GST_CERT", name: "GST Registration Certificate", dept: "FINANCE", helper: "PDF only, max 5MB" },
+    { key: "BANK_STMT", name: "Bank Statement / Cancelled Cheque", dept: "FINANCE", helper: "PDF only, max 5MB" },
+    { key: "TURNOVER", name: "Turnover Proof / Audited Financials", dept: "FINANCE", helper: "PDF only, max 10MB" },
+    { key: "COI", name: "Certificate of Incorporation", dept: "LEGAL", helper: "PDF only, max 5MB" },
+    { key: "MSA", name: "Master Service Agreement (MSA)", dept: "LEGAL", helper: "PDF/DOC, max 10MB" },
+    { key: "NDA", name: "Non-Disclosure Agreement (NDA)", dept: "LEGAL", helper: "PDF/DOC, max 5MB" },
+    { key: "SLA", name: "Service Level Agreement (SLA)", dept: "LEGAL", helper: "PDF/DOC, max 5MB" },
+    { key: "AADHAAR", name: "Aadhaar (Authorised Signatory)", dept: "HR", helper: "PDF/JPG, max 5MB" },
+    { key: "COC", name: "Vendor Code of Conduct (signed)", dept: "HR", helper: "PDF/DOC, max 5MB" },
+  ];
+  const docTypes: Record<string, { id: string; dept: string; name: string }> = {};
+  let order = 0;
+  for (const d of docDefs) {
+    const rec = await prisma.documentType.create({
+      data: {
+        key: d.key, name: d.name, departmentKey: d.dept,
+        acceptedFormats: d.key === "AADHAAR" ? "pdf,jpg" : "pdf,doc",
+        maxSizeMb: d.key === "TURNOVER" || d.key === "MSA" ? 10 : 5,
+        mandatory: true, order: order++, helperText: d.helper,
+      },
+    });
+    docTypes[d.key] = { id: rec.id, dept: d.dept, name: d.name };
+  }
+  const allDocKeys = Object.keys(docTypes);
+
+  // ---- Vendor factory ----
+  async function makeVendor(opts: {
+    name: string;
+    email?: string;
+    withAccount?: boolean;
+    accountName?: string;
+    status: string;
+    submittedDaysAgo?: number;
+    onboardedDaysAgo?: number;
+    value?: number;
+    reviews?: Record<string, { status: string; comment?: string; pausedMs?: number }>;
+    docOverrides?: Record<string, string>;
+    createdByProc?: boolean;
+  }) {
+    const proc = await prisma.user.findUnique({ where: { email: "proc.mgr@buyer.com" } });
+    const submittedAt = opts.submittedDaysAgo != null ? daysAgo(opts.submittedDaysAgo) : null;
+    const vendor = await prisma.vendor.create({
+      data: {
+        name: opts.name,
+        legalName: opts.name + " Pvt Ltd",
+        address: "MIDC Industrial Area, Pune, Maharashtra 411019",
+        phone: "+91 98200 " + Math.floor(10000 + Math.random() * 89999),
+        bankAccount: "HDFC •••• " + Math.floor(1000 + Math.random() * 8999),
+        contactPerson: opts.accountName ?? "Authorised Signatory",
+        gstin: "27" + Math.random().toString(36).slice(2, 12).toUpperCase(),
+        turnover: opts.value ?? 5000000,
+        companyEmail: opts.email ?? null,
+        category: "Facilities & operations",
+        valueAmount: opts.value ?? null,
+        status: opts.status,
+        submittedAt,
+        onboardedAt: opts.onboardedDaysAgo != null ? daysAgo(opts.onboardedDaysAgo) : null,
+        createdById: opts.createdByProc ? proc?.id : null,
+      },
+    });
+
+    if (opts.withAccount && opts.email) {
+      await prisma.user.create({
+        data: {
+          email: opts.email.toLowerCase(), name: opts.accountName ?? opts.name,
+          role: "VENDOR", passwordHash: hash, vendorId: vendor.id, active: true,
+        },
+      });
+    }
+
+    // Documents (only once submitted)
+    if (submittedAt) {
+      for (const key of allDocKeys) {
+        const st = opts.docOverrides?.[key] ?? "SUBMITTED";
+        await prisma.document.create({
+          data: {
+            vendorId: vendor.id, documentTypeId: docTypes[key].id,
+            filename: `${key.toLowerCase()}.pdf`, storedPath: `/uploads/demo/${key.toLowerCase()}.pdf`,
+            sizeKb: 240 + Math.floor(Math.random() * 800),
+            status: st, uploadedAt: submittedAt,
+            reviewNote: st === "CHANGES_REQUESTED" ? "Name mismatch — please re-upload." : null,
+          },
+        });
+      }
+      // Dept reviews
+      for (const [key, id] of Object.entries(depts)) {
+        const r = opts.reviews?.[key] ?? { status: "PENDING" };
+        const { start, due } = computeDueAt(submittedAt, 5, CUTOFF);
+        let slaState = "RUNNING";
+        if (r.status === "APPROVED" || r.status === "REJECTED") slaState = "MET";
+        else if (r.status === "CHANGES_REQUESTED") slaState = "PAUSED";
+        await prisma.deptReview.create({
+          data: {
+            vendorId: vendor.id, departmentId: id, status: r.status,
+            comment: r.comment ?? null, slaStartedAt: start, slaDueAt: due,
+            slaState, pausedMs: r.pausedMs ?? 0,
+            slaPausedAt: r.status === "CHANGES_REQUESTED" ? daysAgo(1) : null,
+            decidedById: r.status !== "PENDING" ? proc?.id : null,
+          },
+        });
+      }
+    }
+    return vendor;
+  }
+
+  // Anugrah — active vendor account, one dept requested changes (resubmission demo)
+  await makeVendor({
+    name: "Anugrah Freight Solutions",
+    email: "karan@anugrahfreight.in",
+    accountName: "Karan Desai",
+    withAccount: true,
+    status: "CHANGES_REQUESTED",
+    submittedDaysAgo: 4,
+    value: 1800000,
+    reviews: {
+      PROCUREMENT: { status: "APPROVED", comment: "Vendor details verified." },
+      FINANCE: { status: "CHANGES_REQUESTED", comment: "Bank proof name doesn't match legal entity — please re-upload." },
+      LEGAL: { status: "PENDING" },
+      HR: { status: "PENDING" },
+    },
+    docOverrides: { BANK_STMT: "CHANGES_REQUESTED" },
+  });
+
+  // Northline — fresh submission, all depts pending
+  await makeVendor({
+    name: "Northline Steel Components",
+    email: "ops@northlinesteel.in",
+    accountName: "Meera Joshi",
+    withAccount: true,
+    status: "IN_REVIEW",
+    submittedDaysAgo: 1,
+    value: 2400000,
+    reviews: { PROCUREMENT: { status: "PENDING" }, FINANCE: { status: "PENDING" }, LEGAL: { status: "PENDING" }, HR: { status: "PENDING" } },
+  });
+
+  // Vertex — all depts approved, awaiting Admin final approval
+  await makeVendor({
+    name: "Vertex Cloud Systems",
+    email: "accounts@vertexcloud.io",
+    withAccount: false,
+    createdByProc: true,
+    status: "FINAL_PENDING",
+    submittedDaysAgo: 6,
+    value: 3200000,
+    reviews: {
+      PROCUREMENT: { status: "APPROVED" }, FINANCE: { status: "APPROVED" },
+      LEGAL: { status: "APPROVED" }, HR: { status: "APPROVED" },
+    },
+    docOverrides: Object.fromEntries(allDocKeys.map((k) => [k, "APPROVED"])),
+  });
+
+  // Kestrel — flagged to admin
+  await makeVendor({
+    name: "Kestrel Staffing Partners",
+    email: "hello@kestrelstaffing.in",
+    withAccount: false,
+    createdByProc: true,
+    status: "FLAGGED",
+    submittedDaysAgo: 5,
+    value: 900000,
+    reviews: {
+      PROCUREMENT: { status: "APPROVED" },
+      FINANCE: { status: "FLAGGED", comment: "Turnover figures look inconsistent — flagged for admin audit." },
+      LEGAL: { status: "PENDING" }, HR: { status: "PENDING" },
+    },
+  });
+
+  // Sterling & Orbit — onboarded (analytics)
+  await makeVendor({
+    name: "Sterling Logistics", email: "finance@sterlinglog.in", withAccount: false, createdByProc: true,
+    status: "ONBOARDED", submittedDaysAgo: 20, onboardedDaysAgo: 11, value: 1800000,
+    reviews: { PROCUREMENT: { status: "APPROVED" }, FINANCE: { status: "APPROVED" }, LEGAL: { status: "APPROVED" }, HR: { status: "APPROVED" } },
+    docOverrides: Object.fromEntries(allDocKeys.map((k) => [k, "APPROVED"])),
+  });
+  await makeVendor({
+    name: "Orbit Supplies", email: "ap@orbitsupplies.in", withAccount: false, createdByProc: true,
+    status: "ONBOARDED", submittedDaysAgo: 30, onboardedDaysAgo: 22, value: 650000,
+    reviews: { PROCUREMENT: { status: "APPROVED" }, FINANCE: { status: "APPROVED" }, LEGAL: { status: "APPROVED" }, HR: { status: "APPROVED" } },
+    docOverrides: Object.fromEntries(allDocKeys.map((k) => [k, "APPROVED"])),
+  });
+
+  // Meridian — INVITED with an open invite link (demo the signup/OTP flow)
+  const meridian = await makeVendor({
+    name: "Meridian Packaging Co.", email: "contact@meridianpack.in", withAccount: false,
+    createdByProc: true, status: "INVITED",
+  });
+  const inviteToken = "demo-invite-meridian";
+  const proc = await prisma.user.findUnique({ where: { email: "proc.mgr@buyer.com" } });
+  await prisma.invite.create({
+    data: {
+      email: "contact@meridianpack.in", token: inviteToken, vendorId: meridian.id,
+      createdById: proc?.id, role: "VENDOR", expiresAt: new Date(Date.now() + 7 * 864e5),
+    },
+  });
+
+  // A few seed notifications
+  const karan = await prisma.user.findUnique({ where: { email: "karan@anugrahfreight.in" } });
+  if (karan)
+    await prisma.notification.create({
+      data: { userId: karan.id, message: "Finance requested changes to your Bank Statement. Please resubmit with a comment.", kind: "STATUS", vendorId: meridian.id },
+    });
+  const financeMgr = await prisma.user.findUnique({ where: { email: "finance.mgr@buyer.com" } });
+  if (financeMgr)
+    await prisma.notification.create({
+      data: { userId: financeMgr.id, message: "New vendor 'Northline Steel Components' is awaiting your Finance review.", kind: "TASK" },
+    });
+
+  console.log("\n✅ Seed complete.");
+  console.log("Login (password: demo1234):");
+  console.log("  Admin           admin@buyer.com");
+  console.log("  Finance mgr     finance.mgr@buyer.com");
+  console.log("  Legal mgr       legal.mgr@buyer.com");
+  console.log("  HR mgr          hr.mgr@buyer.com");
+  console.log("  Procurement mgr proc.mgr@buyer.com");
+  console.log("  Vendor          karan@anugrahfreight.in");
+  console.log(`\nInvite/OTP signup demo: /invite/${inviteToken}\n`);
+}
+
+main()
+  .then(() => prisma.$disconnect())
+  .catch(async (e) => {
+    console.error(e);
+    await prisma.$disconnect();
+    process.exit(1);
+  });

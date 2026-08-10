@@ -1,36 +1,69 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Vendor Onboarding Portal — MVP
 
-## Getting Started
+A functional, click-through MVP of a self-service **Vendor Onboarding Portal** with
+role-based access control (RBAC) enforced at both the **route** and **data** level.
+Built from the VMS wireframes and the `Prototype` scope document.
 
-First, run the development server:
+**Stack:** Next.js 16 (App Router, TypeScript) · Prisma + SQLite · iron-session (auth) · bcryptjs · server-enforced RBAC. Responsive (desktop + mobile web).
+
+## Run it
+
+> Requires Node. This machine had Node installed to `~/.local/node` — if `node`
+> isn't on your PATH, run: `export PATH="$HOME/.local/node/bin:$PATH"`
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cd vendor-onboarding-mvp
+cp .env.example .env          # first time only
+npm install
+npm run db:setup              # create SQLite db + generate client + seed demo data
+npm run dev                   # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+To reset demo data at any time: `npm run db:setup`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Demo accounts (password: `demo1234`)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Role | Email |
+|---|---|
+| Admin | `admin@buyer.com` |
+| Finance Dept Manager | `finance.mgr@buyer.com` |
+| Legal Dept Manager | `legal.mgr@buyer.com` |
+| HR Dept Manager | `hr.mgr@buyer.com` |
+| Procurement Dept Manager | `proc.mgr@buyer.com` |
+| Vendor (Anugrah Freight) | `karan@anugrahfreight.in` |
 
-## Learn More
+Each department also has a secondary manager (`*.mgr2@buyer.com`).
 
-To learn more about Next.js, take a look at the following resources:
+**Invite / OTP signup demo:** open `/invite/demo-invite-meridian` (the OTP is
+shown on the verify screen, since email is simulated).
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## What to try
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- **Vendor** (Anugrah): see dept-wise + doc-wise status; Finance requested a change
+  → re-upload in **Documents** and **resubmit with a comment** on the Overview.
+- **Finance manager**: review queue → open a vendor → Approve / Request changes /
+  Reject (comment required) / Flag to admin. You only see **Finance** documents and
+  cannot open another department's flow.
+- **Admin**: Status Dashboard (flagged + final-approval queue), **Access & Invites**
+  (invite a vendor, grant/revoke access, assign managers), **Configuration**
+  (SLA/cutoff, approval gate, notifications, document rules), **Analytics**, and per
+  vendor: **halt**, **final approval**, **clear flag**.
 
-## Deploy on Vercel
+## Personas & RBAC
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- **Admin** (buyer): configuration, access management, SLA/triggers, halt onboarding,
+  final approval, analytics.
+- **Buyer Dept User** (HR / Legal / Finance / Procurement): reviews only their own
+  department's routed documents; read-only on vendor data; Approve / Reject /
+  Request changes / Flag-to-admin.
+- **Vendor**: invite-only signup, onboarding form, document upload (all in one go),
+  real-time status, resubmit with clarification.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+RBAC is enforced server-side in every page and Server Action via
+`requireRole` / `requireDept` (route) and per-caller query scoping (data). Any
+out-of-role route access returns the dedicated `/unauthorized` screen.
+
+## Notes
+- This is a prototype: file uploads are mocked (filename recorded, no bytes stored),
+  emails are simulated (shown in-app), and AI auto-review is a mocked toggle.
+- See **`SCOPE_NOTES.md`** for scope mapping, resolved open questions, and known gaps.

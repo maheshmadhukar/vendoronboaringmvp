@@ -1,0 +1,192 @@
+// Vendor Onboarding Portal — data model
+// NOTE: SQLite (via Prisma) does not support native enums, so status/role
+// fields are Strings with allowed values documented in lib/constants.ts.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Department {
+  id                 String   @id @default(cuid())
+  key                String   @unique // HR | LEGAL | FINANCE | PROCUREMENT
+  name               String
+  slaDays            Int      @default(5)
+  primaryManagerId   String?
+  secondaryManagerId String?
+  users              User[]   @relation("DeptMembers")
+  reviews            DeptReview[]
+  createdAt          DateTime @default(now())
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String?
+  role         String   // ADMIN | DEPT | VENDOR
+  managerRole  String?  // PRIMARY | SECONDARY | null (for DEPT users)
+  active       Boolean  @default(true)
+  departmentId String?
+  department   Department? @relation("DeptMembers", fields: [departmentId], references: [id])
+  vendorId     String?  @unique
+  vendor       Vendor?  @relation("VendorAccount", fields: [vendorId], references: [id])
+  createdAt    DateTime @default(now())
+
+  createdVendors Vendor[]      @relation("VendorCreatedBy")
+  notifications  Notification[]
+  comments       Comment[]
+  auditLogs      AuditLog[]
+}
+
+model Vendor {
+  id            String   @id @default(cuid())
+  name          String
+  legalName     String?
+  address       String?
+  phone         String?
+  bankAccount   String?
+  contactPerson String?
+  gstin         String?
+  turnover      Float?
+  companyEmail  String?
+  category      String?
+  valueAmount   Float?   // contract value, for analytics
+  status        String   @default("INVITED")
+  // INVITED | DRAFT | SUBMITTED | IN_REVIEW | CHANGES_REQUESTED | FLAGGED |
+  // HALTED | DEPT_APPROVED | FINAL_PENDING | ONBOARDED | REJECTED
+  haltReason    String?
+  aiReviewEnabled Boolean @default(false)
+  createdById   String?
+  createdBy     User?    @relation("VendorCreatedBy", fields: [createdById], references: [id])
+  account       User?    @relation("VendorAccount")
+  submittedAt   DateTime?
+  onboardedAt   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  documents   Document[]
+  deptReviews DeptReview[]
+  comments    Comment[]
+}
+
+model Invite {
+  id          String    @id @default(cuid())
+  email       String
+  token       String    @unique
+  vendorId    String?
+  createdById String?
+  role        String    @default("VENDOR")
+  expiresAt   DateTime
+  consumedAt  DateTime?
+  createdAt   DateTime  @default(now())
+}
+
+model OtpCode {
+  id         String    @id @default(cuid())
+  email      String
+  code       String
+  purpose    String    @default("SIGNUP")
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+}
+
+model DocumentType {
+  id              String  @id @default(cuid())
+  key             String  @unique
+  name            String
+  departmentKey   String  // routing: HR | LEGAL | FINANCE | PROCUREMENT
+  acceptedFormats String  @default("pdf,doc") // csv
+  maxSizeMb       Int     @default(5)
+  mandatory       Boolean @default(true)
+  active          Boolean @default(true)
+  order           Int     @default(0)
+  helperText      String?
+  documents       Document[]
+}
+
+model Document {
+  id             String   @id @default(cuid())
+  vendorId       String
+  vendor         Vendor   @relation(fields: [vendorId], references: [id])
+  documentTypeId String
+  documentType   DocumentType @relation(fields: [documentTypeId], references: [id])
+  filename       String?
+  storedPath     String?
+  sizeKb         Int?
+  status         String   @default("PENDING") // PENDING | SUBMITTED | APPROVED | REJECTED | CHANGES_REQUESTED
+  reviewNote     String?
+  uploadedAt     DateTime?
+  updatedAt      DateTime @updatedAt
+}
+
+model DeptReview {
+  id           String   @id @default(cuid())
+  vendorId     String
+  vendor       Vendor   @relation(fields: [vendorId], references: [id])
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id])
+  status       String   @default("PENDING") // PENDING | APPROVED | REJECTED | CHANGES_REQUESTED | FLAGGED
+  decidedById  String?
+  comment      String?
+  slaStartedAt DateTime?
+  slaDueAt     DateTime?
+  slaPausedAt  DateTime?
+  pausedMs     Int      @default(0)
+  slaState     String   @default("PENDING") // PENDING | RUNNING | PAUSED | MET | BREACHED
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([vendorId, departmentId])
+}
+
+model Comment {
+  id           String   @id @default(cuid())
+  vendorId     String
+  vendor       Vendor   @relation(fields: [vendorId], references: [id])
+  departmentId String?
+  documentId   String?
+  authorId     String
+  author       User     @relation(fields: [authorId], references: [id])
+  body         String
+  kind         String   @default("NOTE") // REJECT | CLARIFICATION | RESUBMIT | FLAG | NOTE | APPROVE
+  createdAt    DateTime @default(now())
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  message   String
+  kind      String   @default("INFO")
+  vendorId  String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model Config {
+  id                    Int     @id @default(1)
+  slaDaysDefault        Int     @default(5)
+  cutoffHour            Int     @default(14)
+  finalApprovalRequired Boolean @default(true)
+  aiReviewDefault       Boolean @default(false)
+  notifyVendorOnStatus  Boolean @default(true)
+  notifyDeptOnSla       Boolean @default(true)
+  notifyDeptOnResubmit  Boolean @default(true)
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actor      User?    @relation(fields: [actorId], references: [id])
+  action     String
+  targetType String?
+  targetId   String?
+  meta       String?
+  createdAt  DateTime @default(now())
+}

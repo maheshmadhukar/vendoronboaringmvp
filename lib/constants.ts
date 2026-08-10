@@ -1,0 +1,106 @@
+// Shared enums-as-constants (SQLite has no native enums)
+
+export const ROLE = { ADMIN: "ADMIN", DEPT: "DEPT", VENDOR: "VENDOR" } as const;
+export type Role = (typeof ROLE)[keyof typeof ROLE];
+
+export const DEPT = {
+  HR: "HR",
+  LEGAL: "LEGAL",
+  FINANCE: "FINANCE",
+  PROCUREMENT: "PROCUREMENT",
+} as const;
+export type DeptKey = (typeof DEPT)[keyof typeof DEPT];
+
+export const DEPT_ORDER: DeptKey[] = ["PROCUREMENT", "FINANCE", "LEGAL", "HR"];
+
+export const DEPT_LABEL: Record<string, string> = {
+  HR: "HR",
+  LEGAL: "Legal",
+  FINANCE: "Finance",
+  PROCUREMENT: "Procurement",
+};
+
+// Vendor lifecycle
+export const VSTATUS = {
+  INVITED: "INVITED",
+  DRAFT: "DRAFT",
+  SUBMITTED: "SUBMITTED",
+  IN_REVIEW: "IN_REVIEW",
+  CHANGES_REQUESTED: "CHANGES_REQUESTED",
+  FLAGGED: "FLAGGED",
+  HALTED: "HALTED",
+  DEPT_APPROVED: "DEPT_APPROVED",
+  FINAL_PENDING: "FINAL_PENDING",
+  ONBOARDED: "ONBOARDED",
+  REJECTED: "REJECTED",
+} as const;
+
+export const VSTATUS_LABEL: Record<string, string> = {
+  INVITED: "Invited",
+  DRAFT: "Draft",
+  SUBMITTED: "Submitted",
+  IN_REVIEW: "In review",
+  CHANGES_REQUESTED: "Changes requested",
+  FLAGGED: "Flagged to admin",
+  HALTED: "Halted",
+  DEPT_APPROVED: "Dept-approved",
+  FINAL_PENDING: "Final approval pending",
+  ONBOARDED: "Onboarded",
+  REJECTED: "Rejected",
+};
+
+// tone for status chips: good | warn | bad | info | neutral
+export const VSTATUS_TONE: Record<string, string> = {
+  INVITED: "neutral",
+  DRAFT: "neutral",
+  SUBMITTED: "info",
+  IN_REVIEW: "info",
+  CHANGES_REQUESTED: "warn",
+  FLAGGED: "warn",
+  HALTED: "bad",
+  DEPT_APPROVED: "info",
+  FINAL_PENDING: "info",
+  ONBOARDED: "good",
+  REJECTED: "bad",
+};
+
+export const REVIEW_STATUS = {
+  PENDING: "PENDING",
+  APPROVED: "APPROVED",
+  REJECTED: "REJECTED",
+  CHANGES_REQUESTED: "CHANGES_REQUESTED",
+  FLAGGED: "FLAGGED",
+} as const;
+
+export const REVIEW_TONE: Record<string, string> = {
+  PENDING: "neutral",
+  APPROVED: "good",
+  REJECTED: "bad",
+  CHANGES_REQUESTED: "warn",
+  FLAGGED: "warn",
+};
+
+export const DOC_STATUS = {
+  PENDING: "PENDING",
+  SUBMITTED: "SUBMITTED",
+  APPROVED: "APPROVED",
+  REJECTED: "REJECTED",
+  CHANGES_REQUESTED: "CHANGES_REQUESTED",
+} as const;
+
+export const SLA_STATE = {
+  PENDING: "PENDING",
+  RUNNING: "RUNNING",
+  PAUSED: "PAUSED",
+  MET: "MET",
+  BREACHED: "BREACHED",
+} as const;
+
+// The 6 pipeline stages shown in the end-to-end status bar
+export const PIPELINE_STAGES = [
+  "Request Raised",
+  "Documents Submitted",
+  "Department Review",
+  "Final Approval",
+  "Onboarded",
+] as const;

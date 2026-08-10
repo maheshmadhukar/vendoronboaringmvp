@@ -1,0 +1,145 @@
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import Shell from "@/app/components/Shell";
+import { Chip, Tracker } from "@/app/components/ui";
+import { requireDept } from "@/lib/session";
+import { prisma } from "@/lib/prisma";
+import { pipelineStage } from "@/lib/workflow";
+import {
+  DEPT_LABEL, DEPT_ORDER, REVIEW_STATUS, REVIEW_TONE, VSTATUS, VSTATUS_LABEL, VSTATUS_TONE,
+} from "@/lib/constants";
+import { fmtDate, fmtDateTime, fmtMoney } from "@/lib/format";
+import ReviewActions from "./ReviewActions";
+
+const docTone: Record<string, string> = {
+  PENDING: "neutral", SUBMITTED: "info", APPROVED: "good", REJECTED: "bad", CHANGES_REQUESTED: "warn",
+};
+
+export default async function ReviewPage({ params }: { params: Promise<{ vendorId: string }> }) {
+  const { vendorId } = await params;
+  const user = await requireDept();
+  const dept = user.department!;
+
+  // Horizontal RBAC: only if THIS dept has a review routed for this vendor.
+  const review = await prisma.deptReview.findUnique({
+    where: { vendorId_departmentId: { vendorId, departmentId: dept.id } },
+  });
+  if (!review) redirect("/unauthorized");
+
+  const vendor = await prisma.vendor.findUnique({
+    where: { id: vendorId },
+    include: {
+      deptReviews: { include: { department: true } },
+      comments: { include: { author: true }, orderBy: { createdAt: "asc" } },
+      documents: { include: { documentType: true } },
+    },
+  });
+  if (!vendor) redirect("/unauthorized");
+
+  // Only this department's routed documents.
+  const myDocs = vendor.documents.filter((d) => d.documentType.departmentKey === dept.key);
+
+  const canAct =
+    review.status === REVIEW_STATUS.PENDING &&
+    ![VSTATUS.ONBOARDED, VSTATUS.REJECTED].includes(vendor.status as never);
+  const halted = vendor.status === VSTATUS.HALTED;
+
+  return (
+    <Shell
+      active="queue"
+      title={`Review — ${vendor.name}`}
+      crumbs={<><Link href="/dept">Review Queue</Link><span className="crumb-sep">/</span>{vendor.name}</>}
+    >
+      <div className="page-head">
+        <div>
+          <h1>{vendor.name}</h1>
+          <p>{DEPT_LABEL[dept.key]} review · vendor-entered data is read-only.</p>
+        </div>
+        <Chip tone={VSTATUS_TONE[vendor.status]}>{VSTATUS_LABEL[vendor.status]}</Chip>
+      </div>
+
+      <div className="card card-pad">
+        <div className="section-label">Overall progress</div>
+        <Tracker stage={pipelineStage(vendor.status)} breached={halted} />
+        <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 18 }}>
+          {DEPT_ORDER.map((k) => {
+            const r = vendor.deptReviews.find((x) => x.department.key === k);
+            if (!r) return null;
+            return (
+              <span key={k} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5 }}>
+                <b>{DEPT_LABEL[k]}:</b> <Chip tone={REVIEW_TONE[r.status]}>{r.status.replace(/_/g, " ").toLowerCase()}</Chip>
+              </span>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="split" style={{ marginTop: 18 }}>
+        <div className="card card-pad">
+          <div className="section-label">Vendor details (read-only)</div>
+          <dl className="dl-grid">
+            <dt>Legal name</dt><dd>{vendor.legalName ?? vendor.name}</dd>
+            <dt>Address</dt><dd>{vendor.address ?? "—"}</dd>
+            <dt>Phone</dt><dd>{vendor.phone ?? "—"}</dd>
+            <dt>Bank</dt><dd>{vendor.bankAccount ?? "—"}</dd>
+            <dt>Contact</dt><dd>{vendor.contactPerson ?? "—"}</dd>
+            <dt>GSTIN</dt><dd>{vendor.gstin ?? "—"}</dd>
+            <dt>Turnover</dt><dd>{fmtMoney(vendor.turnover)}</dd>
+            <dt>Email</dt><dd>{vendor.companyEmail ?? "—"}</dd>
+            <dt>Submitted</dt><dd>{fmtDate(vendor.submittedAt)}</dd>
+          </dl>
+        </div>
+
+        <div>
+          <div className="card card-pad">
+            <div className="section-label">{DEPT_LABEL[dept.key]} documents</div>
+            {myDocs.length === 0 ? (
+              <p className="muted" style={{ fontSize: 13 }}>No documents routed to your department.</p>
+            ) : (
+              myDocs.map((d) => (
+                <div className="doc-row" key={d.id}>
+                  <div className="doc-ico" />
+                  <div className="doc-info">
+                    <div className="doc-name">{d.documentType.name}</div>
+                    <div className="doc-meta">{d.filename ?? "not uploaded"}{d.sizeKb ? ` · ${d.sizeKb} KB` : ""}</div>
+                    {d.reviewNote ? <div className="doc-flag">{d.reviewNote}</div> : null}
+                  </div>
+                  <div className="doc-actions">
+                    <Chip tone={docTone[d.status] ?? "neutral"}>{d.status.replace(/_/g, " ").toLowerCase()}</Chip>
+                    {d.filename ? <a className="btn sm ghost" href={d.storedPath ?? "#"} title="Demo file">Download</a> : null}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className="card card-pad" style={{ marginTop: 18 }}>
+            <div className="section-label">Your decision</div>
+            {review.status !== REVIEW_STATUS.PENDING ? (
+              <div style={{ marginBottom: 14 }}>
+                <Chip tone={REVIEW_TONE[review.status]}>{review.status.replace(/_/g, " ").toLowerCase()}</Chip>
+                {review.comment ? <p className="muted" style={{ fontSize: 13, marginTop: 8 }}>{review.comment}</p> : null}
+              </div>
+            ) : null}
+            {canAct ? <ReviewActions vendorId={vendor.id} disabled={halted} /> : (
+              review.status === REVIEW_STATUS.PENDING ? <p className="muted" style={{ fontSize: 13 }}>No actions available for this vendor&apos;s current state.</p> : null
+            )}
+          </div>
+        </div>
+      </div>
+
+      {vendor.comments.length > 0 ? (
+        <div className="card card-pad" style={{ marginTop: 18 }}>
+          <div className="section-label">Comments &amp; clarifications</div>
+          {vendor.comments.map((c) => (
+            <div className="comment" key={c.id}>
+              <div className="who2">{c.author.name} <span className="role">· {c.kind.toLowerCase()}</span></div>
+              <div className="when">{fmtDateTime(c.createdAt)}</div>
+              <div className="body">{c.body}</div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </Shell>
+  );
+}
