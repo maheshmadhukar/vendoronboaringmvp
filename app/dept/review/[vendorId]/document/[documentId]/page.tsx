@@ -15,6 +15,8 @@ export default async function DocumentPage({ params }: { params: Promise<{ vendo
   const { vendorId, documentId } = await params;
   const { document } = await loadOwnedDocument(documentId);
   if (document.vendorId !== vendorId) redirect("/unauthorized");
+  // Halted onboardings are invisible to departments entirely, not just read-only.
+  if (document.vendor.status === VSTATUS.HALTED) redirect("/unauthorized");
 
   const comments = await prisma.comment.findMany({
     where: { documentId },

@@ -4,20 +4,24 @@ import { Chip, Empty } from "@/app/components/ui";
 import { requireDept } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { getConfig } from "@/lib/workflow";
-import { DEPT_LABEL, REVIEW_STATUS, REVIEW_TONE } from "@/lib/constants";
+import { DEPT_LABEL, REVIEW_STATUS, REVIEW_TONE, VSTATUS } from "@/lib/constants";
 import { fmtDate } from "@/lib/format";
 import { isBreached, slaVisual } from "@/lib/sla";
 
 export default async function DeptQueue() {
   const user = await requireDept();
   const dept = user.department!;
-  const cfg = await getConfig();
 
-  const reviews = await prisma.deptReview.findMany({
-    where: { departmentId: dept.id },
-    include: { vendor: true },
-    orderBy: [{ status: "asc" }, { slaDueAt: "asc" }],
-  });
+  const [cfg, allReviews] = await Promise.all([
+    getConfig(),
+    prisma.deptReview.findMany({
+      where: { departmentId: dept.id },
+      include: { vendor: true },
+      orderBy: [{ status: "asc" }, { slaDueAt: "asc" }],
+    }),
+  ]);
+  // Halted onboardings are invisible to departments entirely, not just read-only.
+  const reviews = allReviews.filter((r) => r.vendor.status !== VSTATUS.HALTED);
   const pending = reviews.filter((r) => r.status === REVIEW_STATUS.PENDING);
   const done = reviews.filter((r) => r.status !== REVIEW_STATUS.PENDING);
 

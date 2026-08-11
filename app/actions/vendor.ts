@@ -4,9 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireVendor } from "@/lib/session";
-import { VSTATUS, DOC_STATUS, REVIEW_STATUS, SLA_STATE } from "@/lib/constants";
+import { VSTATUS, DOC_STATUS } from "@/lib/constants";
 import { createDeptReviews, recomputeVendorStatus, notifyDept, notify, getConfig } from "@/lib/workflow";
-import { resumeDue } from "@/lib/sla";
 import { getVendorDocTypes } from "@/lib/vendor";
 
 const GSTIN_RE = /^[0-9]{2}[A-Z0-9]{10}[0-9A-Z]{3}$/i;
@@ -108,52 +107,12 @@ export async function submitApplication() {
   await prisma.vendor.update({ where: { id: vendorId }, data: { status: VSTATUS.IN_REVIEW } });
 
   const reviews = await prisma.deptReview.findMany({ where: { vendorId } });
-  for (const r of reviews) await notifyDept(r.departmentId, `New vendor "${vendor.name}" is awaiting your review.`, vendorId);
+  await Promise.all(
+    reviews.map((r) => notifyDept(r.departmentId, `New vendor "${vendor.name}" is awaiting your review.`, vendorId))
+  );
 
   revalidatePath("/vendor");
   return { ok: "Application submitted for review." };
-}
-
-// Resubmit after a change request (mandatory clarification comment).
-export async function resubmitApplication(_prev: unknown, formData: FormData) {
-  const user = await requireVendor();
-  const vendorId = user.vendorId!;
-  const comment = String(formData.get("comment") || "").trim();
-  if (!comment) return { error: "A clarification comment is required to resubmit." };
-
-  const vendor = await prisma.vendor.findUnique({
-    where: { id: vendorId },
-    include: { deptReviews: true },
-  });
-  if (!vendor) return { error: "Vendor not found." };
-
-  const changed = vendor.deptReviews.filter((r) => r.status === REVIEW_STATUS.CHANGES_REQUESTED);
-  if (changed.length === 0) return { error: "No department has requested changes." };
-
-  for (const r of changed) {
-    // Resume SLA: extend due date by the paused duration.
-    let due = r.slaDueAt;
-    if (r.slaDueAt && r.slaPausedAt) due = resumeDue(r.slaDueAt, r.slaPausedAt);
-    await prisma.deptReview.update({
-      where: { id: r.id },
-      data: { status: REVIEW_STATUS.PENDING, slaState: SLA_STATE.RUNNING, slaDueAt: due, slaPausedAt: null },
-    });
-    await notifyDept(r.departmentId, `${vendor.name} resubmitted with a clarification.`, vendorId);
-  }
-
-  // Re-open documents that were sent back.
-  await prisma.document.updateMany({
-    where: { vendorId, status: DOC_STATUS.CHANGES_REQUESTED },
-    data: { status: DOC_STATUS.SUBMITTED, reviewNote: null },
-  });
-
-  await prisma.comment.create({
-    data: { vendorId, authorId: user.id, body: comment, kind: "RESUBMIT" },
-  });
-
-  await recomputeVendorStatus(vendorId);
-  revalidatePath("/vendor");
-  return { ok: "Resubmitted. The relevant departments have been notified." };
 }
 
 export async function signBuyerDoc(formData: FormData) {

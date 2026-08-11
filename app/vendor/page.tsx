@@ -8,8 +8,8 @@ import {
   DEPT_LABEL, DEPT_ORDER, VSTATUS, VSTATUS_LABEL, VSTATUS_TONE,
   REVIEW_STATUS, REVIEW_TONE, DOC_STATUS,
 } from "@/lib/constants";
-import { fmtDateTime } from "@/lib/format";
-import ResubmitForm from "./ResubmitForm";
+import { fmtDate, fmtDateTime } from "@/lib/format";
+import { slaVisual } from "@/lib/sla";
 
 const docTone: Record<string, string> = {
   PENDING: "neutral", SUBMITTED: "info", APPROVED: "good", REJECTED: "bad", CHANGES_REQUESTED: "warn",
@@ -21,7 +21,7 @@ export default async function VendorOverview() {
   if (!vendor) return null;
 
   const preSubmit = vendor.status === VSTATUS.DRAFT || vendor.status === VSTATUS.INVITED;
-  const changes = vendor.deptReviews.filter((r) => r.status === REVIEW_STATUS.CHANGES_REQUESTED);
+  const flaggedDocs = vendor.documents.filter((d) => d.status === DOC_STATUS.CHANGES_REQUESTED);
 
   return (
     <Shell active="overview" title="Onboarding Overview">
@@ -52,60 +52,68 @@ export default async function VendorOverview() {
         </div>
       ) : null}
 
-      {changes.length > 0 ? (
-        <div className="card card-pad" style={{ marginTop: 18 }}>
-          <div className="card-title">Changes requested</div>
-          <div className="card-sub">
-            {changes.map((r) => `${DEPT_LABEL[r.department.key]}: ${r.comment ?? "changes requested"}`).join(" · ")}
-          </div>
-          <p className="muted" style={{ fontSize: 12.5, marginBottom: 14 }}>
-            Re-upload the flagged document(s) in <Link href="/vendor/documents">Documents</Link>, then resubmit with a comment below.
-          </p>
-          <ResubmitForm />
-        </div>
-      ) : null}
-
-      <div className="split" style={{ marginTop: 18 }}>
-        <div className="card card-pad">
-          <div className="section-label">Department review status</div>
-          {vendor.deptReviews.length === 0 ? (
-            <p className="muted" style={{ fontSize: 13 }}>Not submitted yet.</p>
-          ) : (
-            <ul className="list-reset" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {DEPT_ORDER.map((k) => {
-                const r = vendor.deptReviews.find((x) => x.department.key === k);
-                if (!r) return null;
-                return (
-                  <li key={k} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontSize: 13, fontWeight: 600 }}>{DEPT_LABEL[k]}</span>
-                    <Chip tone={REVIEW_TONE[r.status]}>{r.status.replace(/_/g, " ").toLowerCase()}</Chip>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </div>
-
-        <div className="card card-pad">
-          <div className="section-label">Document status</div>
-          {vendor.documents.length === 0 ? (
-            <Empty title="No documents uploaded" hint="Head to Documents to upload your paperwork." />
-          ) : (
-            <div>
-              {vendor.documents.map((d) => (
-                <div className="doc-row" key={d.id}>
-                  <div className="doc-ico" />
-                  <div className="doc-info">
-                    <div className="doc-name">{d.documentType.name}</div>
-                    <div className="doc-meta">{DEPT_LABEL[d.documentType.departmentKey]} · {d.filename ?? "not uploaded"}</div>
-                    {d.reviewNote ? <div className="doc-flag">{d.reviewNote}</div> : null}
-                  </div>
-                  <Chip tone={docTone[d.status] ?? "neutral"}>{d.status.replace(/_/g, " ").toLowerCase()}</Chip>
+      <div className="card card-pad" style={{ marginTop: 18 }}>
+        <div className="section-label">Document status</div>
+        {flaggedDocs.length === 0 ? (
+          <Empty title="Nothing needs your attention" hint="All submitted documents are in good standing." />
+        ) : (
+          <div>
+            {flaggedDocs.map((d) => (
+              <div className="doc-row" key={d.id}>
+                <div className="doc-ico" />
+                <div className="doc-info">
+                  <div className="doc-name">{d.documentType.name}</div>
+                  <div className="doc-meta">{DEPT_LABEL[d.documentType.departmentKey]} · {d.filename ?? "not uploaded"}</div>
+                  {d.reviewNote ? <div className="doc-flag">{d.reviewNote}</div> : null}
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
+                <Chip tone={docTone[d.status] ?? "neutral"}>{d.status.replace(/_/g, " ").toLowerCase()}</Chip>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="card card-pad" style={{ marginTop: 18 }}>
+        <div className="section-label">Department review status</div>
+        {vendor.deptReviews.length === 0 ? (
+          <p className="muted" style={{ fontSize: 13 }}>Not submitted yet.</p>
+        ) : (
+          <ul className="list-reset" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {DEPT_ORDER.map((k) => {
+              const r = vendor.deptReviews.find((x) => x.department.key === k);
+              if (!r) return null;
+              const approved = r.status === REVIEW_STATUS.APPROVED;
+              const sla = slaVisual(r.slaStartedAt, r.slaDueAt, r.slaState);
+              return (
+                <li key={k} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>{DEPT_LABEL[k]}</span>
+                  {approved ? (
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
+                      <Chip tone={REVIEW_TONE[r.status]}>{r.status.replace(/_/g, " ").toLowerCase()}</Chip>
+                      <span className="sub" style={{ fontSize: 10.5 }}>{fmtDate(r.updatedAt)}</span>
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div>
+                        <Chip tone={sla.tone}>{sla.label}</Chip>
+                        <div className="bar-track" style={{ marginTop: 4, height: 4, minWidth: 70 }}>
+                          <div
+                            className="bar-fill"
+                            style={{
+                              width: `${sla.pct}%`,
+                              background: sla.tone === "warn" ? "var(--warn)" : sla.tone === "bad" ? "var(--bad)" : sla.tone === "neutral" ? "var(--ink-faint)" : "var(--good)",
+                            }}
+                          />
+                        </div>
+                      </div>
+                      <Chip tone={REVIEW_TONE[r.status]}>{r.status.replace(/_/g, " ").toLowerCase()}</Chip>
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </div>
 
       {vendor.comments.length > 0 ? (

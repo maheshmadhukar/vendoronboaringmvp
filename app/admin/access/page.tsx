@@ -3,8 +3,9 @@ import { Chip } from "@/app/components/ui";
 import { requireAdmin } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { ROLE, DEPT_LABEL, DEPT_ORDER } from "@/lib/constants";
-import { setUserActive, assignManager } from "@/app/actions/admin";
+import { setUserActive, swapDeptManagers } from "@/app/actions/admin";
 import InviteVendorForm from "./InviteVendorForm";
+import WorkdayFetchBox from "./WorkdayFetchBox";
 
 export default async function AccessPage() {
   await requireAdmin();
@@ -72,7 +73,7 @@ export default async function AccessPage() {
         <div className="card-pad" style={{ paddingBottom: 0 }}><div className="section-label">Department managers</div></div>
         <div className="table-wrap">
           <table className="table">
-            <thead><tr><th>Department</th><th>Primary</th><th>Secondary</th><th>Reassign primary</th></tr></thead>
+            <thead><tr><th>Department</th><th>Primary</th><th>Swap</th><th>Secondary</th></tr></thead>
             <tbody>
               {DEPT_ORDER.map((k) => {
                 const d = depts.find((x) => x.key === k);
@@ -82,17 +83,19 @@ export default async function AccessPage() {
                 return (
                   <tr key={k}>
                     <td className="strong">{DEPT_LABEL[k]}</td>
-                    <td>{primary?.name ?? "—"}</td>
-                    <td>{secondary?.name ?? "—"}</td>
                     <td>
-                      <form action={assignManager} style={{ display: "flex", gap: 8 }}>
+                      {primary?.name ?? "—"}
+                      <WorkdayFetchBox />
+                    </td>
+                    <td>
+                      <form action={swapDeptManagers}>
                         <input type="hidden" name="departmentId" value={d.id} />
-                        <input type="hidden" name="role" value="PRIMARY" />
-                        <select name="userId" defaultValue={d.primaryManagerId ?? ""} style={{ fontSize: 12, padding: "4px 8px" }}>
-                          {d.users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                        </select>
-                        <button className="btn sm">Set</button>
+                        <button className="btn sm" disabled={!primary && !secondary}>⇄ Swap</button>
                       </form>
+                    </td>
+                    <td>
+                      {secondary?.name ?? "—"}
+                      <WorkdayFetchBox />
                     </td>
                   </tr>
                 );

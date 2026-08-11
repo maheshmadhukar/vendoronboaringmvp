@@ -6,7 +6,6 @@ import { prisma } from "@/lib/prisma";
 import { VSTATUS, VSTATUS_LABEL, VSTATUS_TONE } from "@/lib/constants";
 import { fmtDate, fmtMoney } from "@/lib/format";
 import { vendorSlaSummary } from "@/lib/sla";
-import FlipStatCard from "./FlipStatCard";
 
 function SlaCell({ reviews }: { reviews: Parameters<typeof vendorSlaSummary>[0] }) {
   const sla = vendorSlaSummary(reviews);
@@ -28,7 +27,16 @@ function SlaCell({ reviews }: { reviews: Parameters<typeof vendorSlaSummary>[0] 
   );
 }
 
-type VendorTab = "inprogress" | "onboarded" | "rejected";
+function StatLink({ href, label, value, valueColor }: { href: string; label: string; value: number; valueColor?: string }) {
+  return (
+    <Link href={href} className="stat stat-link">
+      <div className="label">{label}</div>
+      <div className="value" style={{ color: valueColor }}>{value}</div>
+    </Link>
+  );
+}
+
+type VendorTab = "all" | "inprogress" | "onboarded" | "rejected";
 type SearchParams = { sort?: string; dir?: string; tab?: string };
 
 export default async function AdminDashboard({ searchParams }: { searchParams: Promise<SearchParams> }) {
@@ -39,11 +47,12 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
     include: { deptReviews: true, buyerDocs: { include: { template: true } } },
   });
 
-  const tab: VendorTab = sp.tab === "onboarded" ? "onboarded" : sp.tab === "rejected" ? "rejected" : "inprogress";
+  const tab: VendorTab =
+    sp.tab === "all" ? "all" : sp.tab === "onboarded" ? "onboarded" : sp.tab === "rejected" ? "rejected" : "inprogress";
   const onboardedList = vendors.filter((v) => v.status === VSTATUS.ONBOARDED);
   const rejectedList = vendors.filter((v) => v.status === VSTATUS.REJECTED);
   const inProgressList = vendors.filter((v) => v.status !== VSTATUS.ONBOARDED && v.status !== VSTATUS.REJECTED);
-  const tabbed = tab === "onboarded" ? onboardedList : tab === "rejected" ? rejectedList : inProgressList;
+  const tabbed = tab === "all" ? vendors : tab === "onboarded" ? onboardedList : tab === "rejected" ? rejectedList : inProgressList;
 
   const sortingByValue = sp.sort === "value";
   const sortingBySubmitted = sp.sort === "submitted";
@@ -94,13 +103,16 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
       </div>
 
       <div className="grid-4" style={{ marginBottom: 22 }}>
-        <FlipStatCard label="Total vendors" value={vendors.length} vendors={vendors.map((v) => ({ id: v.id, name: v.name }))} />
-        <div className="stat"><div className="label">In progress</div><div className="value">{inFlight}</div></div>
-        <div className="stat"><div className="label">Needs your action</div><div className="value" style={{ color: attention.length ? "var(--accent)" : undefined }}>{attention.length}</div></div>
-        <div className="stat"><div className="label">Onboarded</div><div className="value">{onboardedList.length}</div></div>
+        <StatLink href="?tab=all" label="Total vendors" value={vendors.length} />
+        <StatLink href="?tab=inprogress" label="In progress" value={inFlight} />
+        <a href="#pending-action" className="stat stat-link">
+          <div className="label">Needs your action</div>
+          <div className="value" style={{ color: attention.length ? "var(--accent)" : undefined }}>{attention.length}</div>
+        </a>
+        <StatLink href="?tab=onboarded" label="Onboarded" value={onboardedList.length} />
       </div>
 
-      <div className="card" style={{ marginBottom: 18 }}>
+      <div className="card" id="pending-action" style={{ marginBottom: 18 }}>
         <div className="card-pad" style={{ paddingBottom: 0 }}><div className="section-label">Pending your action</div></div>
         {attention.length === 0 ? (
           <Empty title="Nothing needs you right now" hint="Flagged and final-approval items will appear here." />
@@ -132,6 +144,9 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
         <div className="card-pad" style={{ paddingBottom: 0 }}>
           <div className="section-label">All vendors</div>
           <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+            <Link className={`btn sm ${tab === "all" ? "primary" : "ghost"}`} href={tabHref("all") + sortSuffix}>
+              All vendors ({vendors.length})
+            </Link>
             <Link className={`btn sm ${tab === "inprogress" ? "primary" : "ghost"}`} href={tabHref("inprogress") + sortSuffix}>
               Onboarding in progress ({inProgressList.length})
             </Link>

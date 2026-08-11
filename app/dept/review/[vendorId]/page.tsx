@@ -9,6 +9,7 @@ import {
   DEPT_LABEL, DEPT_ORDER, REVIEW_STATUS, REVIEW_TONE, VSTATUS, VSTATUS_LABEL, VSTATUS_TONE,
 } from "@/lib/constants";
 import { fmtDate, fmtDateTime, fmtMoney } from "@/lib/format";
+import { getBuyerCoveredKeys } from "@/lib/vendor";
 import ReviewActions from "./ReviewActions";
 import DocumentReviewRow from "./DocumentReviewRow";
 
@@ -18,23 +19,32 @@ export default async function ReviewPage({ params }: { params: Promise<{ vendorI
   const dept = user.department!;
 
   // Horizontal RBAC: only if THIS dept has a review routed for this vendor.
-  const review = await prisma.deptReview.findUnique({
-    where: { vendorId_departmentId: { vendorId, departmentId: dept.id } },
-  });
+  // These three queries are mutually independent (only depend on vendorId/dept.id),
+  // so fetch them concurrently instead of one round trip at a time.
+  const [review, vendor, coveredKeys] = await Promise.all([
+    prisma.deptReview.findUnique({
+      where: { vendorId_departmentId: { vendorId, departmentId: dept.id } },
+    }),
+    prisma.vendor.findUnique({
+      where: { id: vendorId },
+      include: {
+        deptReviews: { include: { department: true } },
+        comments: { include: { author: true }, orderBy: { createdAt: "asc" } },
+        documents: { include: { documentType: true } },
+      },
+    }),
+    // Documents the buyer already provided their own copy of (e.g. MSA/NDA sent at invite time).
+    getBuyerCoveredKeys(vendorId),
+  ]);
   if (!review) redirect("/unauthorized");
-
-  const vendor = await prisma.vendor.findUnique({
-    where: { id: vendorId },
-    include: {
-      deptReviews: { include: { department: true } },
-      comments: { include: { author: true }, orderBy: { createdAt: "asc" } },
-      documents: { include: { documentType: true } },
-    },
-  });
   if (!vendor) redirect("/unauthorized");
+  // Halted onboardings are invisible to departments entirely, not just read-only.
+  if (vendor.status === VSTATUS.HALTED) redirect("/unauthorized");
 
   // Only this department's routed documents.
-  const myDocs = vendor.documents.filter((d) => d.documentType.departmentKey === dept.key);
+  const myDocs = vendor.documents.filter(
+    (d) => d.documentType.departmentKey === dept.key && !coveredKeys.has(d.documentType.key)
+  );
 
   const canFlag =
     review.status !== REVIEW_STATUS.FLAGGED &&

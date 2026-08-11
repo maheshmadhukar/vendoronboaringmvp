@@ -19,17 +19,18 @@ export async function getDocTypes() {
 }
 
 /**
- * Active document types the vendor still needs to upload themselves, excluding
- * any whose key matches a buyer-provided document already attached to them
- * (e.g. if the buyer sent their own MSA at invite time, the vendor doesn't
- * also need to upload an MSA under Documents).
+ * DocumentType keys covered by a buyer-provided document already attached to
+ * this vendor (e.g. the buyer sent their own MSA at invite time) — the
+ * vendor doesn't need to upload one, and departments don't need to review one.
  */
+export async function getBuyerCoveredKeys(vendorId: string): Promise<Set<string>> {
+  const buyerDocs = await prisma.vendorBuyerDoc.findMany({ where: { vendorId }, include: { template: true } });
+  return new Set(buyerDocs.map((d) => d.template.key));
+}
+
+/** Active document types the vendor still needs to upload themselves, excluding buyer-covered ones. */
 export async function getVendorDocTypes(vendorId: string) {
-  const [types, buyerDocs] = await Promise.all([
-    getDocTypes(),
-    prisma.vendorBuyerDoc.findMany({ where: { vendorId }, include: { template: true } }),
-  ]);
-  const coveredKeys = new Set(buyerDocs.map((d) => d.template.key));
+  const [types, coveredKeys] = await Promise.all([getDocTypes(), getBuyerCoveredKeys(vendorId)]);
   return types.filter((t) => !coveredKeys.has(t.key));
 }
 

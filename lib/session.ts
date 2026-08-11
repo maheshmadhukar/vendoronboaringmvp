@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getIronSession, type IronSession } from "iron-session";
@@ -37,16 +38,23 @@ export async function clearSession() {
 
 export type CurrentUser = Awaited<ReturnType<typeof getCurrentUser>>;
 
-export async function getCurrentUser() {
+// cache() dedupes this within a single request — every page calls one of
+// requireAdmin/requireVendor/requireDept AND Shell calls getCurrentUser
+// again; without this each page load did two identical DB round trips.
+export const getCurrentUser = cache(async function getCurrentUser() {
   const session = await getSession();
   if (!session.userId) return null;
   const user = await prisma.user.findUnique({
     where: { id: session.userId },
-    include: { department: true, vendor: true },
+    include: {
+      department: true,
+      vendor: true,
+      _count: { select: { notifications: { where: { read: false } } } },
+    },
   });
   if (!user || !user.active) return null;
   return user;
-}
+});
 
 /** Redirect to /login if not authenticated. */
 export async function requireUser() {

@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/session";
-import { prisma } from "@/lib/prisma";
 import { ROLE, DEPT_LABEL } from "@/lib/constants";
 import { logoutAction } from "@/app/actions/auth";
 
@@ -37,9 +36,7 @@ export default async function Shell({
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const unread = await prisma.notification.count({
-    where: { userId: user.id, read: false },
-  });
+  const unread = user._count.notifications;
 
   const items = NAV[user.role] ?? [];
   const roleLabel =

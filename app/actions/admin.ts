@@ -61,17 +61,19 @@ export async function setUserActive(formData: FormData) {
   revalidatePath("/admin/access");
 }
 
-export async function assignManager(formData: FormData) {
+export async function swapDeptManagers(formData: FormData) {
   await requireAdmin();
   const departmentId = String(formData.get("departmentId") || "");
-  const userId = String(formData.get("userId") || "");
-  const role = String(formData.get("role") || ""); // PRIMARY | SECONDARY
-  if (!departmentId || !userId || !role) return;
-  await prisma.user.update({ where: { id: userId }, data: { managerRole: role, departmentId } });
+  const dept = await prisma.department.findUnique({ where: { id: departmentId } });
+  if (!dept) return;
+  const { primaryManagerId, secondaryManagerId } = dept;
+
   await prisma.department.update({
     where: { id: departmentId },
-    data: role === "PRIMARY" ? { primaryManagerId: userId } : { secondaryManagerId: userId },
+    data: { primaryManagerId: secondaryManagerId, secondaryManagerId: primaryManagerId },
   });
+  if (primaryManagerId) await prisma.user.update({ where: { id: primaryManagerId }, data: { managerRole: "SECONDARY" } });
+  if (secondaryManagerId) await prisma.user.update({ where: { id: secondaryManagerId }, data: { managerRole: "PRIMARY" } });
   revalidatePath("/admin/access");
 }
 
@@ -91,10 +93,12 @@ export async function updateConfig(_prev: unknown, formData: FormData) {
   });
   // per-dept SLA
   const depts = await prisma.department.findMany();
-  for (const d of depts) {
-    const v = formData.get(`sla_${d.id}`);
-    if (v != null) await prisma.department.update({ where: { id: d.id }, data: { slaDays: Number(v) } });
-  }
+  await Promise.all(
+    depts.map((d) => {
+      const v = formData.get(`sla_${d.id}`);
+      return v != null ? prisma.department.update({ where: { id: d.id }, data: { slaDays: Number(v) } }) : null;
+    })
+  );
   revalidatePath("/admin/config");
   return { ok: "Configuration saved." };
 }

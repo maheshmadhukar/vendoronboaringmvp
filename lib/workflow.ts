@@ -1,6 +1,7 @@
 import { prisma } from "./prisma";
 import { VSTATUS, REVIEW_STATUS, SLA_STATE, DOC_STATUS, ROLE } from "./constants";
 import { computeDueAt, isBreached } from "./sla";
+import { getBuyerCoveredKeys } from "./vendor";
 
 export async function getConfig() {
   let cfg = await prisma.config.findUnique({ where: { id: 1 } });
@@ -53,30 +54,32 @@ export async function audit(
 export async function createDeptReviews(vendorId: string, submittedAt: Date) {
   const cfg = await getConfig();
   const depts = await prisma.department.findMany();
-  for (const dept of depts) {
-    const { start, due } = computeDueAt(submittedAt, dept.slaDays, cfg.cutoffHour);
-    await prisma.deptReview.upsert({
-      where: { vendorId_departmentId: { vendorId, departmentId: dept.id } },
-      create: {
-        vendorId,
-        departmentId: dept.id,
-        status: REVIEW_STATUS.PENDING,
-        slaStartedAt: start,
-        slaDueAt: due,
-        slaState: SLA_STATE.RUNNING,
-      },
-      update: {
-        status: REVIEW_STATUS.PENDING,
-        slaStartedAt: start,
-        slaDueAt: due,
-        slaState: SLA_STATE.RUNNING,
-        decidedById: null,
-        comment: null,
-        pausedMs: 0,
-        slaPausedAt: null,
-      },
-    });
-  }
+  await Promise.all(
+    depts.map((dept) => {
+      const { start, due } = computeDueAt(submittedAt, dept.slaDays, cfg.cutoffHour);
+      return prisma.deptReview.upsert({
+        where: { vendorId_departmentId: { vendorId, departmentId: dept.id } },
+        create: {
+          vendorId,
+          departmentId: dept.id,
+          status: REVIEW_STATUS.PENDING,
+          slaStartedAt: start,
+          slaDueAt: due,
+          slaState: SLA_STATE.RUNNING,
+        },
+        update: {
+          status: REVIEW_STATUS.PENDING,
+          slaStartedAt: start,
+          slaDueAt: due,
+          slaState: SLA_STATE.RUNNING,
+          decidedById: null,
+          comment: null,
+          pausedMs: 0,
+          slaPausedAt: null,
+        },
+      });
+    })
+  );
 }
 
 /**
@@ -92,9 +95,14 @@ export async function recomputeDeptReviewStatus(vendorId: string, departmentId: 
   });
   if (!review) return;
 
-  const docs = await prisma.document.findMany({
+  const allDocs = await prisma.document.findMany({
     where: { vendorId, documentType: { departmentKey: review.department.key } },
+    include: { documentType: true },
   });
+  // A document the buyer already provided (e.g. their own MSA/NDA) isn't something
+  // the vendor was asked to submit, so it shouldn't block this department's rollup.
+  const coveredKeys = await getBuyerCoveredKeys(vendorId);
+  const docs = allDocs.filter((d) => !coveredKeys.has(d.documentType.key));
   if (docs.length === 0) return;
 
   const anyRejected = docs.some((d) => d.status === DOC_STATUS.REJECTED);

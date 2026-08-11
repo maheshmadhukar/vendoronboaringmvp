@@ -25,17 +25,19 @@ type SearchParams = { mode?: string; y?: string; q?: string; from?: string; to?:
 
 export default async function Analytics({ searchParams }: { searchParams: Promise<SearchParams> }) {
   await requireAdmin();
-  await getConfig();
   const sp = await searchParams;
   const period = resolvePeriod(sp);
   const { from, to } = period;
 
-  const vendors = await prisma.vendor.findMany({
-    include: { deptReviews: { include: { department: true } }, comments: true },
-  });
-  const depts = await prisma.department.findMany();
+  const [, vendors, depts, documents] = await Promise.all([
+    getConfig(),
+    prisma.vendor.findMany({
+      include: { deptReviews: { include: { department: true } }, comments: true },
+    }),
+    prisma.department.findMany(),
+    prisma.document.findMany({ include: { documentType: true } }),
+  ]);
   const deptById = new Map(depts.map((d) => [d.id, d]));
-  const documents = await prisma.document.findMany({ include: { documentType: true } });
   const docTypeById = new Map(documents.map((d) => [d.id, d.documentType]));
 
   const allOnboarded = vendors.filter((v) => v.status === VSTATUS.ONBOARDED);
