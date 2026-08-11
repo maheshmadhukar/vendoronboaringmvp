@@ -1,8 +1,7 @@
-import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { computeDueAt } from "../lib/sla";
+import { prisma } from "../lib/prisma";
 
-const prisma = new PrismaClient();
 const PW = "demo1234";
 const CUTOFF = 14;
 
