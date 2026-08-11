@@ -3,7 +3,9 @@
 // fields are Strings with allowed values documented in lib/constants.ts.
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+  engineType      = "client"
 }
 
 datasource db {
