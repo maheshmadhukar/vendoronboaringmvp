@@ -3,14 +3,19 @@ import { requireAdmin } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { getConfig } from "@/lib/workflow";
 import { DEPT_LABEL } from "@/lib/constants";
-import { updateDocType } from "@/app/actions/admin";
+import { updateDocType, setDocumentTypeActive, setBuyerDocTemplateActive } from "@/app/actions/admin";
 import ConfigForm from "./ConfigForm";
+import AddDocumentTypeForm from "./AddDocumentTypeForm";
+import AddBuyerDocTemplateForm from "./AddBuyerDocTemplateForm";
+
+const DOC_FORMATS = ["doc", "pdf", "jpeg"] as const;
 
 export default async function ConfigPage() {
   await requireAdmin();
   const cfg = await getConfig();
   const depts = await prisma.department.findMany({ orderBy: { name: "asc" } });
   const docTypes = await prisma.documentType.findMany({ orderBy: { order: "asc" } });
+  const buyerDocTemplates = await prisma.buyerDocTemplate.findMany({ orderBy: { order: "asc" } });
 
   return (
     <Shell active="config" title="Configuration">
@@ -26,29 +31,75 @@ export default async function ConfigPage() {
       <div className="card" style={{ marginTop: 18 }}>
         <div className="card-pad" style={{ paddingBottom: 0 }}>
           <div className="card-title">Document requirements</div>
-          <div className="card-sub">Accepted formats, max size, and whether each document is mandatory. Routing shows which department reviews it.</div>
+          <div className="card-sub">Accepted format, max size, and whether each document is mandatory. Routing shows which department reviews it.</div>
         </div>
         <div className="table-wrap">
           <table className="table">
-            <thead><tr><th>Document</th><th>Routed to</th><th>Formats</th><th>Max MB</th><th>Mandatory</th><th></th></tr></thead>
+            <thead><tr><th>Document</th><th>Routed to</th><th>Format</th><th>Max MB</th><th>Mandatory</th><th>Active</th><th></th></tr></thead>
             <tbody>
               {docTypes.map((t) => (
-                <tr key={t.id}>
+                <tr key={t.id} style={t.active ? undefined : { opacity: 0.55 }}>
                   <td className="strong">{t.name}</td>
-                  <td>{DEPT_LABEL[t.departmentKey]}</td>
+                  <td>{DEPT_LABEL[t.departmentKey] ?? t.departmentKey}</td>
                   <td>
                     <form action={updateDocType} id={`dt-${t.id}`} style={{ display: "contents" }}>
                       <input type="hidden" name="id" value={t.id} />
-                      <input name="acceptedFormats" defaultValue={t.acceptedFormats} style={{ width: 90, fontSize: 12, padding: "4px 8px" }} />
+                      <select name="acceptedFormats" defaultValue={DOC_FORMATS.includes(t.acceptedFormats as never) ? t.acceptedFormats : "doc"} style={{ fontSize: 12, padding: "4px 8px" }}>
+                        {DOC_FORMATS.map((f) => <option key={f} value={f}>{f}</option>)}
+                      </select>
                     </form>
                   </td>
                   <td><input form={`dt-${t.id}`} name="maxSizeMb" type="number" defaultValue={t.maxSizeMb} style={{ width: 64, fontSize: 12, padding: "4px 8px" }} /></td>
                   <td><input form={`dt-${t.id}`} name="mandatory" type="checkbox" defaultChecked={t.mandatory} /></td>
-                  <td><button form={`dt-${t.id}`} className="btn sm">Save</button></td>
+                  <td>{t.active ? <span className="chip good">Active</span> : <span className="chip neutral">Inactive</span>}</td>
+                  <td style={{ display: "flex", gap: 6 }}>
+                    <button form={`dt-${t.id}`} className="btn sm">Save</button>
+                    <form action={setDocumentTypeActive}>
+                      <input type="hidden" name="id" value={t.id} />
+                      <input type="hidden" name="active" value={t.active ? "false" : "true"} />
+                      <button className={`btn sm ${t.active ? "danger" : ""}`}>{t.active ? "Remove" : "Restore"}</button>
+                    </form>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+        <div className="card-pad">
+          <div className="section-label">Add a document type</div>
+          <AddDocumentTypeForm depts={depts.map((d) => ({ id: d.id, label: DEPT_LABEL[d.key] ?? d.name }))} formats={DOC_FORMATS as unknown as string[]} />
+        </div>
+      </div>
+
+      <div className="card" style={{ marginTop: 18 }}>
+        <div className="card-pad" style={{ paddingBottom: 0 }}>
+          <div className="card-title">Buyer document templates</div>
+          <div className="card-sub">Documents the buyer sends to the vendor (e.g. MSA, NDA). These are offered, pre-checked, when sending an invite.</div>
+        </div>
+        <div className="table-wrap">
+          <table className="table">
+            <thead><tr><th>Document</th><th>Routed to</th><th>Active</th><th></th></tr></thead>
+            <tbody>
+              {buyerDocTemplates.map((t) => (
+                <tr key={t.id} style={t.active ? undefined : { opacity: 0.55 }}>
+                  <td className="strong">{t.name}</td>
+                  <td>{DEPT_LABEL[t.departmentKey] ?? t.departmentKey}</td>
+                  <td>{t.active ? <span className="chip good">Active</span> : <span className="chip neutral">Inactive</span>}</td>
+                  <td>
+                    <form action={setBuyerDocTemplateActive}>
+                      <input type="hidden" name="id" value={t.id} />
+                      <input type="hidden" name="active" value={t.active ? "false" : "true"} />
+                      <button className={`btn sm ${t.active ? "danger" : ""}`}>{t.active ? "Remove" : "Restore"}</button>
+                    </form>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="card-pad">
+          <div className="section-label">Add a buyer document template</div>
+          <AddBuyerDocTemplateForm depts={depts.map((d) => ({ id: d.id, label: DEPT_LABEL[d.key] ?? d.name }))} />
         </div>
       </div>
     </Shell>

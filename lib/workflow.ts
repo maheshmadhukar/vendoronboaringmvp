@@ -1,6 +1,6 @@
 import { prisma } from "./prisma";
 import { VSTATUS, REVIEW_STATUS, SLA_STATE, DOC_STATUS, ROLE } from "./constants";
-import { computeDueAt } from "./sla";
+import { computeDueAt, isBreached } from "./sla";
 
 export async function getConfig() {
   let cfg = await prisma.config.findUnique({ where: { id: 1 } });
@@ -107,13 +107,17 @@ export async function recomputeDeptReviewStatus(vendorId: string, departmentId: 
   else if (allApproved) next = REVIEW_STATUS.APPROVED;
   else next = REVIEW_STATUS.PENDING;
 
-  const data: { status: string; slaState?: string; slaPausedAt?: Date | null } = { status: next };
+  const data: { status: string; slaState?: string; slaPausedAt?: Date | null; everBreached?: boolean } = { status: next };
   const terminal = next === REVIEW_STATUS.REJECTED || next === REVIEW_STATUS.APPROVED;
   if (terminal && review.slaState !== SLA_STATE.MET) {
     data.slaState = SLA_STATE.MET;
   } else if (next === REVIEW_STATUS.CHANGES_REQUESTED && review.slaState !== SLA_STATE.PAUSED) {
     data.slaState = SLA_STATE.PAUSED;
     data.slaPausedAt = new Date();
+  }
+  // Sticky: once a review has missed its due date, remember that even after it resolves.
+  if (!review.everBreached && isBreached(review.slaDueAt, review.slaState)) {
+    data.everBreached = true;
   }
 
   await prisma.deptReview.update({ where: { id: review.id }, data });

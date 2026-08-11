@@ -7,6 +7,7 @@ import { requireDept } from "@/lib/session";
 import { loadOwnedDocument } from "@/lib/dept";
 import { REVIEW_STATUS, DOC_STATUS, VSTATUS } from "@/lib/constants";
 import { recomputeDeptReviewStatus, notify, notifyAdmins, audit } from "@/lib/workflow";
+import { isBreached } from "@/lib/sla";
 
 /** Load the review that belongs to THIS dept user's department (horizontal RBAC). */
 async function ownReview(vendorId: string) {
@@ -157,8 +158,9 @@ export async function flagVendor(_prev: unknown, formData: FormData) {
   const comment = String(formData.get("comment") || "").trim();
   if (!comment) return { error: "Describe the issue you're flagging." };
   const { user, review } = await ownReview(vendorId);
+  const everBreached = review.everBreached || isBreached(review.slaDueAt, review.slaState);
 
-  await prisma.deptReview.update({ where: { id: review.id }, data: { status: REVIEW_STATUS.FLAGGED, decidedById: user.id, comment } });
+  await prisma.deptReview.update({ where: { id: review.id }, data: { status: REVIEW_STATUS.FLAGGED, decidedById: user.id, comment, everBreached } });
   await prisma.vendor.update({ where: { id: vendorId }, data: { status: VSTATUS.FLAGGED } });
   await prisma.comment.create({ data: { vendorId, departmentId: user.departmentId, authorId: user.id, body: comment, kind: "FLAG" } });
   await audit(user.id, `FLAG_${review.department.key}`, vendorId, comment);

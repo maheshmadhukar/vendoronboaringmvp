@@ -1,11 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireVendor } from "@/lib/session";
 import { VSTATUS, DOC_STATUS, REVIEW_STATUS, SLA_STATE } from "@/lib/constants";
 import { createDeptReviews, recomputeVendorStatus, notifyDept, notify, getConfig } from "@/lib/workflow";
 import { resumeDue } from "@/lib/sla";
+import { getVendorDocTypes } from "@/lib/vendor";
 
 const GSTIN_RE = /^[0-9]{2}[A-Z0-9]{10}[0-9A-Z]{3}$/i;
 
@@ -92,7 +94,8 @@ export async function submitApplication() {
   if (!vendor.address || !vendor.phone || !vendor.bankAccount)
     return { error: "Complete your business details before submitting." };
 
-  const types = await prisma.documentType.findMany({ where: { active: true, mandatory: true } });
+  const vendorTypes = await getVendorDocTypes(vendorId);
+  const types = vendorTypes.filter((t) => t.mandatory);
   const docs = await prisma.document.findMany({ where: { vendorId } });
   const uploaded = new Set(docs.filter((d) => d.status !== DOC_STATUS.PENDING).map((d) => d.documentTypeId));
   const missing = types.filter((t) => !uploaded.has(t.id));
@@ -151,4 +154,18 @@ export async function resubmitApplication(_prev: unknown, formData: FormData) {
   await recomputeVendorStatus(vendorId);
   revalidatePath("/vendor");
   return { ok: "Resubmitted. The relevant departments have been notified." };
+}
+
+export async function signBuyerDoc(formData: FormData) {
+  const user = await requireVendor();
+  const id = String(formData.get("id") || "");
+  const doc = await prisma.vendorBuyerDoc.findUnique({ where: { id } });
+  if (!doc || doc.vendorId !== user.vendorId) redirect("/unauthorized");
+
+  await prisma.vendorBuyerDoc.update({
+    where: { id },
+    data: { signedAt: new Date(), signedByName: user.name },
+  });
+  revalidatePath("/vendor/buyer-documents");
+  revalidatePath("/admin");
 }

@@ -3,7 +3,7 @@
 import { useActionState } from "react";
 import { inviteVendor } from "@/app/actions/admin";
 
-export default function InviteVendorForm() {
+export default function InviteVendorForm({ templates }: { templates: { id: string; name: string }[] }) {
   const [state, action, pending] = useActionState(
     inviteVendor,
     null as { error?: string; ok?: string; link?: string } | null
@@ -20,6 +20,19 @@ export default function InviteVendorForm() {
           <input name="email" type="email" placeholder="contact@acme.com" />
         </div>
       </div>
+      {templates.length > 0 ? (
+        <div className="field">
+          <label>Buyer documents to send</label>
+          <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+            {templates.map((t) => (
+              <label key={t.id} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 400 }}>
+                <input type="checkbox" name="templateIds" value={t.id} defaultChecked /> {t.name}
+              </label>
+            ))}
+          </div>
+          <span className="hint">Attached to the vendor as soon as the invite is created.</span>
+        </div>
+      ) : null}
       {state?.error ? <div className="alert bad">{state.error}</div> : null}
       {state?.ok ? (
         <div className="alert good">

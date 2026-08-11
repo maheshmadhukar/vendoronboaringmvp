@@ -11,6 +11,7 @@ export default async function AccessPage() {
   const users = await prisma.user.findMany({ include: { department: true }, orderBy: [{ role: "asc" }, { name: "asc" }] });
   const depts = await prisma.department.findMany({ include: { users: true }, orderBy: { name: "asc" } });
   const invites = await prisma.invite.findMany({ where: { consumedAt: null }, orderBy: { createdAt: "desc" }, take: 10 });
+  const buyerDocTemplates = await prisma.buyerDocTemplate.findMany({ where: { active: true }, orderBy: { order: "asc" } });
 
   const internal = users.filter((u) => u.role !== ROLE.VENDOR);
   const vendors = users.filter((u) => u.role === ROLE.VENDOR);
@@ -24,7 +25,7 @@ export default async function AccessPage() {
       <div className="card card-pad">
         <div className="card-title">Invite a vendor</div>
         <div className="card-sub">Buyer-initiated onboarding only — this sends an invite link + OTP sign-up.</div>
-        <InviteVendorForm />
+        <InviteVendorForm templates={buyerDocTemplates.map((t) => ({ id: t.id, name: t.name }))} />
       </div>
 
       {invites.length > 0 ? (

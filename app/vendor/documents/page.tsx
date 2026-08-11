@@ -2,7 +2,7 @@ import Shell from "@/app/components/Shell";
 import { Alert } from "@/app/components/ui";
 import { requireVendor } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { getDocTypes } from "@/lib/vendor";
+import { getVendorDocTypes } from "@/lib/vendor";
 import { DEPT_LABEL, DEPT_ORDER, VSTATUS, DOC_STATUS } from "@/lib/constants";
 import DocUploadRow from "./DocUploadRow";
 import SubmitButton from "./SubmitButton";
@@ -12,7 +12,7 @@ export default async function DocumentsPage() {
   const vendor = await prisma.vendor.findUnique({ where: { id: user.vendorId! } });
   if (!vendor) return null;
 
-  const types = await getDocTypes();
+  const types = await getVendorDocTypes(vendor.id);
   const docs = await prisma.document.findMany({ where: { vendorId: vendor.id } });
   const byType = new Map(docs.map((d) => [d.documentTypeId, d]));
 

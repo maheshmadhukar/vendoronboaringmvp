@@ -19,6 +19,7 @@ const NAV: Record<string, NavItem[]> = {
     { href: "/vendor", label: "Overview", icon: "▚", key: "overview" },
     { href: "/vendor/onboarding", label: "Business Details", icon: "✎", key: "form" },
     { href: "/vendor/documents", label: "Documents", icon: "▤", key: "docs" },
+    { href: "/vendor/buyer-documents", label: "Buyer Documents", icon: "⎘", key: "buyerdocs" },
   ],
 };
 

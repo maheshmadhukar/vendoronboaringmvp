@@ -7,6 +7,13 @@ import { requireAdmin } from "@/lib/session";
 import { VSTATUS } from "@/lib/constants";
 import { recomputeVendorStatus, notify, audit, getConfig } from "@/lib/workflow";
 
+const DOC_FORMATS = ["doc", "pdf", "jpeg"] as const;
+
+/** UPPER_SNAKE key from a free-text name, e.g. "Quality Assurance" -> "QUALITY_ASSURANCE". */
+function slugifyKey(name: string): string {
+  return name.trim().toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+}
+
 async function notifyVendorAccount(vendorId: string, message: string) {
   const acct = await prisma.user.findFirst({ where: { vendorId } });
   if (acct) await notify(acct.id, message, "STATUS", vendorId);
@@ -33,6 +40,14 @@ export async function inviteVendor(_prev: unknown, formData: FormData) {
   await prisma.invite.create({
     data: { email, token, vendorId: vendor.id, createdById: admin.id, expiresAt: new Date(Date.now() + 7 * 864e5) },
   });
+
+  const templateIds = formData.getAll("templateIds").map(String).filter(Boolean);
+  if (templateIds.length > 0) {
+    await prisma.vendorBuyerDoc.createMany({
+      data: templateIds.map((templateId) => ({ vendorId: vendor.id, templateId })),
+    });
+  }
+
   await audit(admin.id, "INVITE_VENDOR", vendor.id, email);
   revalidatePath("/admin/access");
   return { ok: `Invite created for ${name}.`, link: `/invite/${token}` };
@@ -87,15 +102,107 @@ export async function updateConfig(_prev: unknown, formData: FormData) {
 export async function updateDocType(formData: FormData) {
   await requireAdmin();
   const id = String(formData.get("id") || "");
+  const format = String(formData.get("acceptedFormats") || "doc");
   await prisma.documentType.update({
     where: { id },
     data: {
-      acceptedFormats: String(formData.get("acceptedFormats") || "pdf,doc"),
+      acceptedFormats: DOC_FORMATS.includes(format as never) ? format : "doc",
       maxSizeMb: Number(formData.get("maxSizeMb") || 5),
       mandatory: formData.get("mandatory") === "on",
     },
   });
   revalidatePath("/admin/config");
+}
+
+export async function createDepartment(_prev: unknown, formData: FormData) {
+  const admin = await requireAdmin();
+  const name = String(formData.get("name") || "").trim();
+  const slaDays = Number(formData.get("slaDays") || 5);
+  if (!name) return { error: "Department name is required." };
+  const key = slugifyKey(name);
+  if (!key) return { error: "Enter a valid department name." };
+
+  const existing = await prisma.department.findUnique({ where: { key } });
+  if (existing) return { error: `A department named "${name}" already exists.` };
+
+  await prisma.department.create({ data: { key, name, slaDays } });
+  await audit(admin.id, "CREATE_DEPARTMENT", undefined, key);
+  revalidatePath("/admin/config");
+  return { ok: `Department "${name}" added.` };
+}
+
+export async function createDocumentType(_prev: unknown, formData: FormData) {
+  const admin = await requireAdmin();
+  const name = String(formData.get("name") || "").trim();
+  const departmentId = String(formData.get("departmentId") || "");
+  const format = String(formData.get("format") || "doc");
+  const maxSizeMb = Number(formData.get("maxSizeMb") || 5);
+  const mandatory = formData.get("mandatory") === "on";
+  if (!name) return { error: "Document name is required." };
+  if (!departmentId) return { error: "Pick a department to route this document to." };
+
+  const dept = await prisma.department.findUnique({ where: { id: departmentId } });
+  if (!dept) return { error: "Selected department not found." };
+
+  const key = slugifyKey(name);
+  const existing = await prisma.documentType.findUnique({ where: { key } });
+  if (existing) return { error: `A document type named "${name}" already exists.` };
+
+  const maxOrder = await prisma.documentType.aggregate({ _max: { order: true } });
+  await prisma.documentType.create({
+    data: {
+      key, name, departmentKey: dept.key,
+      acceptedFormats: DOC_FORMATS.includes(format as never) ? format : "doc",
+      maxSizeMb, mandatory, active: true,
+      order: (maxOrder._max.order ?? 0) + 1,
+    },
+  });
+  await audit(admin.id, "CREATE_DOCUMENT_TYPE", undefined, key);
+  revalidatePath("/admin/config");
+  return { ok: `Document type "${name}" added.` };
+}
+
+export async function setDocumentTypeActive(formData: FormData) {
+  const admin = await requireAdmin();
+  const id = String(formData.get("id") || "");
+  const active = String(formData.get("active") || "") === "true";
+  const dt = await prisma.documentType.update({ where: { id }, data: { active } });
+  await audit(admin.id, active ? "RESTORE_DOCUMENT_TYPE" : "REMOVE_DOCUMENT_TYPE", undefined, dt.key);
+  revalidatePath("/admin/config");
+}
+
+export async function createBuyerDocTemplate(_prev: unknown, formData: FormData) {
+  const admin = await requireAdmin();
+  const name = String(formData.get("name") || "").trim();
+  const departmentId = String(formData.get("departmentId") || "");
+  if (!name) return { error: "Document name is required." };
+  if (!departmentId) return { error: "Pick a department to route this document to." };
+
+  const dept = await prisma.department.findUnique({ where: { id: departmentId } });
+  if (!dept) return { error: "Selected department not found." };
+
+  const key = slugifyKey(name);
+  const existing = await prisma.buyerDocTemplate.findUnique({ where: { key } });
+  if (existing) return { error: `A buyer document template named "${name}" already exists.` };
+
+  const maxOrder = await prisma.buyerDocTemplate.aggregate({ _max: { order: true } });
+  await prisma.buyerDocTemplate.create({
+    data: { key, name, departmentKey: dept.key, active: true, order: (maxOrder._max.order ?? 0) + 1 },
+  });
+  await audit(admin.id, "CREATE_BUYER_DOC_TEMPLATE", undefined, key);
+  revalidatePath("/admin/config");
+  revalidatePath("/admin/access");
+  return { ok: `Buyer document template "${name}" added.` };
+}
+
+export async function setBuyerDocTemplateActive(formData: FormData) {
+  const admin = await requireAdmin();
+  const id = String(formData.get("id") || "");
+  const active = String(formData.get("active") || "") === "true";
+  const t = await prisma.buyerDocTemplate.update({ where: { id }, data: { active } });
+  await audit(admin.id, active ? "RESTORE_BUYER_DOC_TEMPLATE" : "REMOVE_BUYER_DOC_TEMPLATE", undefined, t.key);
+  revalidatePath("/admin/config");
+  revalidatePath("/admin/access");
 }
 
 export async function haltVendor(formData: FormData) {

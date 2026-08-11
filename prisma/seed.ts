@@ -19,9 +19,11 @@ async function main() {
   await prisma.deptReview.deleteMany();
   await prisma.otpCode.deleteMany();
   await prisma.invite.deleteMany();
+  await prisma.vendorBuyerDoc.deleteMany();
   await prisma.user.deleteMany();
   await prisma.vendor.deleteMany();
   await prisma.documentType.deleteMany();
+  await prisma.buyerDocTemplate.deleteMany();
   await prisma.department.deleteMany();
   await prisma.config.deleteMany();
 
@@ -73,17 +75,17 @@ async function main() {
 
   // Document types (routing per approved mapping)
   const docDefs = [
-    { key: "VENDOR_FORM", name: "Vendor Registration Form", dept: "PROCUREMENT", helper: "PDF/DOC, max 5MB" },
-    { key: "PAN", name: "PAN Card", dept: "FINANCE", helper: "PDF only, max 5MB" },
-    { key: "GST_CERT", name: "GST Registration Certificate", dept: "FINANCE", helper: "PDF only, max 5MB" },
-    { key: "BANK_STMT", name: "Bank Statement / Cancelled Cheque", dept: "FINANCE", helper: "PDF only, max 5MB" },
-    { key: "TURNOVER", name: "Turnover Proof / Audited Financials", dept: "FINANCE", helper: "PDF only, max 10MB" },
-    { key: "COI", name: "Certificate of Incorporation", dept: "LEGAL", helper: "PDF only, max 5MB" },
-    { key: "MSA", name: "Master Service Agreement (MSA)", dept: "LEGAL", helper: "PDF/DOC, max 10MB" },
-    { key: "NDA", name: "Non-Disclosure Agreement (NDA)", dept: "LEGAL", helper: "PDF/DOC, max 5MB" },
-    { key: "SLA", name: "Service Level Agreement (SLA)", dept: "LEGAL", helper: "PDF/DOC, max 5MB" },
-    { key: "AADHAAR", name: "Aadhaar (Authorised Signatory)", dept: "HR", helper: "PDF/JPG, max 5MB" },
-    { key: "COC", name: "Vendor Code of Conduct (signed)", dept: "HR", helper: "PDF/DOC, max 5MB" },
+    { key: "VENDOR_FORM", name: "Vendor Registration Form", dept: "PROCUREMENT", helper: "PDF, max 5MB", format: "pdf" },
+    { key: "PAN", name: "PAN Card", dept: "FINANCE", helper: "PDF only, max 5MB", format: "pdf" },
+    { key: "GST_CERT", name: "GST Registration Certificate", dept: "FINANCE", helper: "PDF only, max 5MB", format: "pdf" },
+    { key: "BANK_STMT", name: "Bank Statement / Cancelled Cheque", dept: "FINANCE", helper: "PDF only, max 5MB", format: "pdf" },
+    { key: "TURNOVER", name: "Turnover Proof / Audited Financials", dept: "FINANCE", helper: "PDF only, max 10MB", format: "pdf" },
+    { key: "COI", name: "Certificate of Incorporation", dept: "LEGAL", helper: "PDF only, max 5MB", format: "pdf" },
+    { key: "MSA", name: "Master Service Agreement (MSA)", dept: "LEGAL", helper: "PDF, max 10MB", format: "pdf" },
+    { key: "NDA", name: "Non-Disclosure Agreement (NDA)", dept: "LEGAL", helper: "PDF, max 5MB", format: "pdf" },
+    { key: "SLA", name: "Service Level Agreement (SLA)", dept: "LEGAL", helper: "PDF, max 5MB", format: "pdf" },
+    { key: "AADHAAR", name: "Aadhaar (Authorised Signatory)", dept: "HR", helper: "JPEG only, max 5MB", format: "jpeg" },
+    { key: "COC", name: "Vendor Code of Conduct (signed)", dept: "HR", helper: "PDF, max 5MB", format: "pdf" },
   ];
   const docTypes: Record<string, { id: string; dept: string; name: string }> = {};
   let order = 0;
@@ -91,7 +93,7 @@ async function main() {
     const rec = await prisma.documentType.create({
       data: {
         key: d.key, name: d.name, departmentKey: d.dept,
-        acceptedFormats: d.key === "AADHAAR" ? "pdf,jpg" : "pdf,doc",
+        acceptedFormats: d.format,
         maxSizeMb: d.key === "TURNOVER" || d.key === "MSA" ? 10 : 5,
         mandatory: true, order: order++, helperText: d.helper,
       },
@@ -99,6 +101,20 @@ async function main() {
     docTypes[d.key] = { id: rec.id, dept: d.dept, name: d.name };
   }
   const allDocKeys = Object.keys(docTypes);
+
+  // Buyer document templates (sent to vendors at invite time, read-only on their side)
+  const buyerDocDefs = [
+    { key: "MSA", name: "Master Service Agreement (MSA)", dept: "LEGAL" },
+    { key: "NDA", name: "Non-Disclosure Agreement (NDA)", dept: "LEGAL" },
+  ];
+  const buyerDocTemplates: Record<string, string> = {};
+  let buyerDocOrder = 0;
+  for (const d of buyerDocDefs) {
+    const rec = await prisma.buyerDocTemplate.create({
+      data: { key: d.key, name: d.name, departmentKey: d.dept, active: true, order: buyerDocOrder++ },
+    });
+    buyerDocTemplates[d.key] = rec.id;
+  }
 
   // ---- Vendor factory ----
   async function makeVendor(opts: {
@@ -181,7 +197,7 @@ async function main() {
   }
 
   // Anugrah — active vendor account, one dept requested changes (resubmission demo)
-  await makeVendor({
+  const anugrah = await makeVendor({
     name: "Anugrah Freight Solutions",
     email: "karan@anugrahfreight.in",
     accountName: "Karan Desai",
@@ -199,7 +215,7 @@ async function main() {
   });
 
   // Northline — fresh submission, all depts pending
-  await makeVendor({
+  const northline = await makeVendor({
     name: "Northline Steel Components",
     email: "ops@northlinesteel.in",
     accountName: "Meera Joshi",
@@ -209,6 +225,15 @@ async function main() {
     value: 2400000,
     reviews: { PROCUREMENT: { status: "PENDING" }, FINANCE: { status: "PENDING" }, LEGAL: { status: "PENDING" }, HR: { status: "PENDING" } },
   });
+
+  // Attach the buyer's MSA + NDA templates to a couple of vendors, as if sent at invite time.
+  // Northline has signed both (demo "Done" state); Anugrah hasn't signed either yet (demo "In progress" state).
+  for (const templateId of Object.values(buyerDocTemplates)) {
+    await prisma.vendorBuyerDoc.create({ data: { vendorId: anugrah.id, templateId } });
+    await prisma.vendorBuyerDoc.create({
+      data: { vendorId: northline.id, templateId, signedAt: daysAgo(1), signedByName: "Meera Joshi" },
+    });
+  }
 
   // Vertex — all depts approved, awaiting Admin final approval
   await makeVendor({

@@ -72,6 +72,7 @@ model Vendor {
   documents   Document[]
   deptReviews DeptReview[]
   comments    Comment[]
+  buyerDocs   VendorBuyerDoc[]
 }
 
 model Invite {
@@ -139,6 +140,7 @@ model DeptReview {
   slaPausedAt  DateTime?
   pausedMs     Int      @default(0)
   slaState     String   @default("PENDING") // PENDING | RUNNING | PAUSED | MET | BREACHED
+  everBreached Boolean  @default(false) // sticky: true once this review has ever missed its SLA, even after it later resolves
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -178,6 +180,31 @@ model Config {
   notifyVendorOnStatus  Boolean @default(true)
   notifyDeptOnSla       Boolean @default(true)
   notifyDeptOnResubmit  Boolean @default(true)
+}
+
+model BuyerDocTemplate {
+  id            String   @id @default(cuid())
+  key           String   @unique
+  name          String
+  departmentKey String   // routing dropdown value; not used for access control in this scope
+  active        Boolean  @default(true)
+  order         Int      @default(0)
+  createdAt     DateTime @default(now())
+  vendorDocs    VendorBuyerDoc[]
+}
+
+/** A buyer document template attached to a specific vendor (created at invite time). */
+model VendorBuyerDoc {
+  id         String   @id @default(cuid())
+  vendorId   String
+  vendor     Vendor   @relation(fields: [vendorId], references: [id])
+  templateId String
+  template   BuyerDocTemplate @relation(fields: [templateId], references: [id])
+  createdAt  DateTime @default(now())
+  signedAt     DateTime?
+  signedByName String?
+
+  @@unique([vendorId, templateId])
 }
 
 model AuditLog {

@@ -18,6 +18,21 @@ export async function getDocTypes() {
   return prisma.documentType.findMany({ where: { active: true }, orderBy: { order: "asc" } });
 }
 
+/**
+ * Active document types the vendor still needs to upload themselves, excluding
+ * any whose key matches a buyer-provided document already attached to them
+ * (e.g. if the buyer sent their own MSA at invite time, the vendor doesn't
+ * also need to upload an MSA under Documents).
+ */
+export async function getVendorDocTypes(vendorId: string) {
+  const [types, buyerDocs] = await Promise.all([
+    getDocTypes(),
+    prisma.vendorBuyerDoc.findMany({ where: { vendorId }, include: { template: true } }),
+  ]);
+  const coveredKeys = new Set(buyerDocs.map((d) => d.template.key));
+  return types.filter((t) => !coveredKeys.has(t.key));
+}
+
 /** Group a vendor's documents by routing department key. */
 export function groupDocsByDept(vendor: VendorFull) {
   const map: Record<string, VendorFull["documents"]> = {};

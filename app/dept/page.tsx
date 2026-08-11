@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { getConfig } from "@/lib/workflow";
 import { DEPT_LABEL, REVIEW_STATUS, REVIEW_TONE } from "@/lib/constants";
 import { fmtDate } from "@/lib/format";
-import { isBreached, daysLeft } from "@/lib/sla";
+import { isBreached, slaVisual } from "@/lib/sla";
 
 export default async function DeptQueue() {
   const user = await requireDept();
@@ -48,15 +48,25 @@ export default async function DeptQueue() {
               <thead><tr><th>Vendor</th><th>Submitted</th><th>SLA due</th>{cfg.aiReviewDefault ? <th>AI review</th> : null}<th>Status</th><th></th></tr></thead>
               <tbody>
                 {pending.map((r) => {
-                  const breach = isBreached(r.slaDueAt, r.slaState);
-                  const dl = daysLeft(r.slaDueAt);
+                  const sla = slaVisual(r.slaStartedAt, r.slaDueAt, r.slaState);
                   return (
                     <tr key={r.id}>
                       <td><div className="strong">{r.vendor.name}</div><div className="sub">{r.vendor.category}</div></td>
                       <td className="tnum">{fmtDate(r.vendor.submittedAt)}</td>
                       <td className="tnum">
-                        {fmtDate(r.slaDueAt)}{" "}
-                        {breach ? <Chip tone="bad">breached</Chip> : dl != null ? <span className="sub">({dl}d left)</span> : null}
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <Chip tone={sla.tone}>{sla.label}</Chip>
+                          <span className="sub">{fmtDate(r.slaDueAt)}</span>
+                        </div>
+                        <div className="bar-track" style={{ marginTop: 5, height: 5, minWidth: 90 }}>
+                          <div
+                            className="bar-fill"
+                            style={{
+                              width: `${sla.pct}%`,
+                              background: sla.tone === "bad" ? "var(--bad)" : sla.tone === "warn" ? "var(--warn)" : sla.tone === "neutral" ? "var(--ink-faint)" : "var(--good)",
+                            }}
+                          />
+                        </div>
                       </td>
                       {cfg.aiReviewDefault ? (
                         <td><Chip tone="info">✦ {r.vendor.status === "CHANGES_REQUESTED" ? "check flagged fields" : "no high-risk items"}</Chip></td>
