@@ -10,10 +10,7 @@ import {
 } from "@/lib/constants";
 import { fmtDate, fmtDateTime, fmtMoney } from "@/lib/format";
 import ReviewActions from "./ReviewActions";
-
-const docTone: Record<string, string> = {
-  PENDING: "neutral", SUBMITTED: "info", APPROVED: "good", REJECTED: "bad", CHANGES_REQUESTED: "warn",
-};
+import DocumentReviewRow from "./DocumentReviewRow";
 
 export default async function ReviewPage({ params }: { params: Promise<{ vendorId: string }> }) {
   const { vendorId } = await params;
@@ -39,8 +36,8 @@ export default async function ReviewPage({ params }: { params: Promise<{ vendorI
   // Only this department's routed documents.
   const myDocs = vendor.documents.filter((d) => d.documentType.departmentKey === dept.key);
 
-  const canAct =
-    review.status === REVIEW_STATUS.PENDING &&
+  const canFlag =
+    review.status !== REVIEW_STATUS.FLAGGED &&
     ![VSTATUS.ONBOARDED, VSTATUS.REJECTED].includes(vendor.status as never);
   const halted = vendor.status === VSTATUS.HALTED;
 
@@ -97,32 +94,22 @@ export default async function ReviewPage({ params }: { params: Promise<{ vendorI
               <p className="muted" style={{ fontSize: 13 }}>No documents routed to your department.</p>
             ) : (
               myDocs.map((d) => (
-                <div className="doc-row" key={d.id}>
-                  <div className="doc-ico" />
-                  <div className="doc-info">
-                    <div className="doc-name">{d.documentType.name}</div>
-                    <div className="doc-meta">{d.filename ?? "not uploaded"}{d.sizeKb ? ` · ${d.sizeKb} KB` : ""}</div>
-                    {d.reviewNote ? <div className="doc-flag">{d.reviewNote}</div> : null}
-                  </div>
-                  <div className="doc-actions">
-                    <Chip tone={docTone[d.status] ?? "neutral"}>{d.status.replace(/_/g, " ").toLowerCase()}</Chip>
-                    {d.filename ? <a className="btn sm ghost" href={d.storedPath ?? "#"} title="Demo file">Download</a> : null}
-                  </div>
-                </div>
+                <DocumentReviewRow key={d.id} document={{ ...d, vendorId }} />
               ))
             )}
           </div>
 
           <div className="card card-pad" style={{ marginTop: 18 }}>
-            <div className="section-label">Your decision</div>
-            {review.status !== REVIEW_STATUS.PENDING ? (
-              <div style={{ marginBottom: 14 }}>
-                <Chip tone={REVIEW_TONE[review.status]}>{review.status.replace(/_/g, " ").toLowerCase()}</Chip>
-                {review.comment ? <p className="muted" style={{ fontSize: 13, marginTop: 8 }}>{review.comment}</p> : null}
-              </div>
-            ) : null}
-            {canAct ? <ReviewActions vendorId={vendor.id} disabled={halted} /> : (
-              review.status === REVIEW_STATUS.PENDING ? <p className="muted" style={{ fontSize: 13 }}>No actions available for this vendor&apos;s current state.</p> : null
+            <div className="section-label">Department status</div>
+            <p className="muted" style={{ fontSize: 12.5, marginBottom: 12 }}>
+              Derived from the decisions on the documents above — approve or reject each document individually.
+            </p>
+            <div style={{ marginBottom: 14 }}>
+              <Chip tone={REVIEW_TONE[review.status]}>{review.status.replace(/_/g, " ").toLowerCase()}</Chip>
+              {review.comment ? <p className="muted" style={{ fontSize: 13, marginTop: 8 }}>{review.comment}</p> : null}
+            </div>
+            {canFlag ? <ReviewActions vendorId={vendor.id} disabled={halted} /> : (
+              <p className="muted" style={{ fontSize: 13 }}>No further actions available for this vendor&apos;s current state.</p>
             )}
           </div>
         </div>

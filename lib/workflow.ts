@@ -1,5 +1,5 @@
 import { prisma } from "./prisma";
-import { VSTATUS, REVIEW_STATUS, SLA_STATE, ROLE } from "./constants";
+import { VSTATUS, REVIEW_STATUS, SLA_STATE, DOC_STATUS, ROLE } from "./constants";
 import { computeDueAt } from "./sla";
 
 export async function getConfig() {
@@ -77,6 +77,47 @@ export async function createDeptReviews(vendorId: string, submittedAt: Date) {
       },
     });
   }
+}
+
+/**
+ * Recompute a department's review status from the statuses of the
+ * documents routed to it. Decisions are made per document; this rolls
+ * them up into the single DeptReview record that drives the vendor's
+ * overall status and the SLA clock.
+ */
+export async function recomputeDeptReviewStatus(vendorId: string, departmentId: string) {
+  const review = await prisma.deptReview.findUnique({
+    where: { vendorId_departmentId: { vendorId, departmentId } },
+    include: { department: true },
+  });
+  if (!review) return;
+
+  const docs = await prisma.document.findMany({
+    where: { vendorId, documentType: { departmentKey: review.department.key } },
+  });
+  if (docs.length === 0) return;
+
+  const anyRejected = docs.some((d) => d.status === DOC_STATUS.REJECTED);
+  const anyChanges = docs.some((d) => d.status === DOC_STATUS.CHANGES_REQUESTED);
+  const allApproved = docs.every((d) => d.status === DOC_STATUS.APPROVED);
+
+  let next = review.status;
+  if (anyRejected) next = REVIEW_STATUS.REJECTED;
+  else if (anyChanges) next = REVIEW_STATUS.CHANGES_REQUESTED;
+  else if (allApproved) next = REVIEW_STATUS.APPROVED;
+  else next = REVIEW_STATUS.PENDING;
+
+  const data: { status: string; slaState?: string; slaPausedAt?: Date | null } = { status: next };
+  const terminal = next === REVIEW_STATUS.REJECTED || next === REVIEW_STATUS.APPROVED;
+  if (terminal && review.slaState !== SLA_STATE.MET) {
+    data.slaState = SLA_STATE.MET;
+  } else if (next === REVIEW_STATUS.CHANGES_REQUESTED && review.slaState !== SLA_STATE.PAUSED) {
+    data.slaState = SLA_STATE.PAUSED;
+    data.slaPausedAt = new Date();
+  }
+
+  await prisma.deptReview.update({ where: { id: review.id }, data });
+  await recomputeVendorStatus(vendorId);
 }
 
 /**

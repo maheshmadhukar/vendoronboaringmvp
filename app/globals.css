@@ -158,6 +158,36 @@ h1,h2,h3,h4{ margin:0; }
 .comment .when{ font-size:10.5px; color:var(--ink-faint); }
 .comment .body{ font-size:12.5px; color:var(--ink-soft); margin-top:2px; }
 
+/* ---------- Document review (rich contract layout) ---------- */
+.ai-note{ display:flex; align-items:flex-start; gap:10px; margin-bottom:18px; background:var(--accent-fill); border-radius:var(--radius-sm); padding:12px 14px; }
+.ai-badge{ font-size:10px; font-weight:700; letter-spacing:.03em; color:var(--accent-ink); background:var(--panel); border-radius:999px; padding:2px 9px; flex:0 0 auto; }
+.ai-risks{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:4px; }
+.ai-risks li{ font-size:12.5px; line-height:1.4; padding-left:14px; position:relative; }
+.ai-risks li::before{ content:"●"; position:absolute; left:0; top:1px; font-size:7px; }
+.ai-risks li.bad{ color:var(--bad); } .ai-risks li.bad::before{ color:var(--bad); }
+.ai-risks li.warn{ color:var(--warn); } .ai-risks li.warn::before{ color:var(--warn); }
+.ai-risks li.good{ color:var(--good); } .ai-risks li.good::before{ color:var(--good); }
+
+.doc-layout{ display:grid; grid-template-columns:1fr 300px; gap:24px; align-items:start; }
+.doc-paper{ border:1px solid var(--border); border-radius:var(--radius); padding:26px 30px; background:var(--panel); font-size:13.5px; line-height:1.7; color:var(--ink); box-shadow:var(--shadow-sm); }
+.doc-paper h6{ font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; margin:22px 0 6px; color:var(--ink-soft); }
+.doc-paper > div:first-child h6{ margin-top:0; }
+.doc-paper p{ margin:0 0 4px; }
+.doc-highlight{ background:var(--accent-fill); border-bottom:2px solid var(--accent); padding:1px 2px; border-radius:2px; position:relative; }
+.doc-highlight .marker{ position:absolute; top:-9px; right:-8px; width:16px; height:16px; border-radius:50%; background:var(--accent); color:#fff; font-size:9px; font-weight:700; display:flex; align-items:center; justify-content:center; }
+
+.comment-rail{ border:1px solid var(--border); border-radius:var(--radius); padding:16px; background:var(--panel-2); }
+.comment-rail h5{ font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:.06em; margin:0 0 12px; color:var(--ink-faint); }
+
+/* ---------- Document review (simple KYC layout) ---------- */
+.simple-doc-layout{ display:grid; grid-template-columns:240px 1fr; gap:26px; align-items:start; }
+.doc-preview{ width:100%; aspect-ratio:3/4; border:1px solid var(--border); border-radius:var(--radius); background:var(--panel-2); background-image:repeating-linear-gradient(var(--border) 0 1px, transparent 1px 18px); background-size:62% 100%; background-position:center 34px; background-repeat:no-repeat; box-shadow:var(--shadow-sm); }
+.doc-preview-name{ font-size:11.5px; color:var(--ink-faint); text-align:center; margin-top:10px; }
+.field-list{ margin:0; }
+.field-list dt{ font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-faint); margin-top:14px; }
+.field-list > div:first-child dt{ margin-top:0; }
+.field-list dd{ margin:3px 0 0; font-size:13.5px; color:var(--ink); }
+
 /* ---------- Alerts ---------- */
 .alert{ display:flex; gap:10px; align-items:flex-start; padding:12px 16px; border-radius:var(--radius-sm); font-size:13px; margin-bottom:18px; }
 .alert.info{ background:var(--info-bg); color:var(--info); }
@@ -198,7 +228,7 @@ h1,h2,h3,h4{ margin:0; }
 @media (max-width:900px){
   .app{ flex-direction:column; }
   .sidebar{ position:static; width:auto; height:auto; }
-  .grid-2,.grid-3,.grid-4,.split,.form-grid{ grid-template-columns:1fr; }
+  .grid-2,.grid-3,.grid-4,.split,.form-grid,.doc-layout,.simple-doc-layout{ grid-template-columns:1fr; }
   .content{ padding:20px 16px 48px; }
   .topbar{ padding:12px 16px; }
 }
