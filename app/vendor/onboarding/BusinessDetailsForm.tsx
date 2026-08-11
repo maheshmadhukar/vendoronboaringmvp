@@ -53,16 +53,14 @@ export default function BusinessDetailsForm({ vendor, editable }: { vendor: V; e
       {state?.error ? <div className="alert bad">{state.error}</div> : null}
       {state?.ok ? <div className="alert good">{state.ok}</div> : null}
 
-      {editable ? (
-        <div className="btn-row">
-          <button className="btn primary" disabled={pending}>{pending ? "Saving…" : "Save details"}</button>
-          <span className="btn-note">Mandatory: address, phone, bank account.</span>
-        </div>
-      ) : (
-        <div className="alert info" style={{ marginTop: 16 }}>
-          <span>Your details are locked while under review. If a department requests changes you&apos;ll be able to edit and resubmit.</span>
-        </div>
-      )}
+      <div className="btn-row">
+        <button className="btn primary" disabled={pending || dis}>
+          {pending ? "Submitting…" : "Submit Business Details"}
+        </button>
+        <span className="btn-note">
+          {editable ? "Mandatory: address, phone, bank account." : "Locked while under review."}
+        </span>
+      </div>
     </form>
   );
 }

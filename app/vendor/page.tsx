@@ -78,25 +78,26 @@ export default async function VendorOverview() {
         {vendor.deptReviews.length === 0 ? (
           <p className="muted" style={{ fontSize: 13 }}>Not submitted yet.</p>
         ) : (
-          <ul className="list-reset" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <ul className="list-reset" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {DEPT_ORDER.map((k) => {
               const r = vendor.deptReviews.find((x) => x.department.key === k);
               if (!r) return null;
               const approved = r.status === REVIEW_STATUS.APPROVED;
               const sla = slaVisual(r.slaStartedAt, r.slaDueAt, r.slaState);
               return (
-                <li key={k} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                <li
+                  key={k}
+                  style={{ display: "grid", gridTemplateColumns: "1fr auto 120px", alignItems: "center", gap: 12 }}
+                >
                   <span style={{ fontSize: 13, fontWeight: 600 }}>{DEPT_LABEL[k]}</span>
-                  {approved ? (
-                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
-                      <Chip tone={REVIEW_TONE[r.status]}>{r.status.replace(/_/g, " ").toLowerCase()}</Chip>
+                  <Chip tone={REVIEW_TONE[r.status]}>{r.status.replace(/_/g, " ").toLowerCase()}</Chip>
+                  <div style={{ textAlign: "right" }}>
+                    {approved ? (
                       <span className="sub" style={{ fontSize: 10.5 }}>{fmtDate(r.updatedAt)}</span>
-                    </div>
-                  ) : (
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    ) : (
                       <div>
                         <Chip tone={sla.tone}>{sla.label}</Chip>
-                        <div className="bar-track" style={{ marginTop: 4, height: 4, minWidth: 70 }}>
+                        <div className="bar-track" style={{ marginTop: 4, height: 4 }}>
                           <div
                             className="bar-fill"
                             style={{
@@ -106,9 +107,8 @@ export default async function VendorOverview() {
                           />
                         </div>
                       </div>
-                      <Chip tone={REVIEW_TONE[r.status]}>{r.status.replace(/_/g, " ").toLowerCase()}</Chip>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </li>
               );
             })}
