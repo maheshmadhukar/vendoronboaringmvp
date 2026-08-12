@@ -57,7 +57,7 @@ model Vendor {
   category      String?
   valueAmount   Float?   // contract value, for analytics
   status        String   @default("INVITED")
-  // INVITED | DRAFT | SUBMITTED | IN_REVIEW | CHANGES_REQUESTED | FLAGGED |
+  // INVITED | DRAFT | SUBMITTED | IN_REVIEW | CHANGES_REQUESTED |
   // HALTED | DEPT_APPROVED | FINAL_PENDING | ONBOARDED | REJECTED
   haltReason    String?
   aiReviewEnabled Boolean @default(false)
@@ -132,7 +132,7 @@ model DeptReview {
   vendor       Vendor   @relation(fields: [vendorId], references: [id])
   departmentId String
   department   Department @relation(fields: [departmentId], references: [id])
-  status       String   @default("PENDING") // PENDING | APPROVED | REJECTED | CHANGES_REQUESTED | FLAGGED
+  status       String   @default("PENDING") // PENDING | APPROVED | REJECTED | CHANGES_REQUESTED
   decidedById  String?
   comment      String?
   slaStartedAt DateTime?
@@ -157,7 +157,7 @@ model Comment {
   authorId     String
   author       User     @relation(fields: [authorId], references: [id])
   body         String
-  kind         String   @default("NOTE") // REJECT | CLARIFICATION | RESUBMIT | FLAG | NOTE | APPROVE
+  kind         String   @default("NOTE") // REJECT | CLARIFICATION | RESUBMIT | NOTE | APPROVE
   createdAt    DateTime @default(now())
 }
 

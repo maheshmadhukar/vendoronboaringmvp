@@ -7,7 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { getConfig } from "@/lib/workflow";
 import { DEPT, DEPT_LABEL, REVIEW_STATUS, REVIEW_TONE, ROLE, VSTATUS } from "@/lib/constants";
 import { fmtDate } from "@/lib/format";
-import { isBreached, slaVisual, daysLeft } from "@/lib/sla";
+import { isBreached, slaVisual, workingDaysLeft } from "@/lib/sla";
 import { resolveDashboardRange } from "@/lib/period";
 
 type SearchParams = { range?: string };
@@ -37,7 +37,7 @@ export default async function DeptQueue({ searchParams }: { searchParams: Promis
   // Amber = within 2 days of the due date and not already breached — mirrors the warn threshold in lib/sla.ts.
   const amber = pending.filter((r) => {
     if (isBreached(r.slaDueAt, r.slaState)) return false;
-    const dl = daysLeft(r.slaDueAt);
+    const dl = workingDaysLeft(r.slaDueAt);
     return dl != null && dl <= 2;
   });
 

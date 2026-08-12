@@ -1,24 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { requireDept } from "@/lib/session";
 import { loadOwnedDocument } from "@/lib/dept";
-import { REVIEW_STATUS, DOC_STATUS, VSTATUS } from "@/lib/constants";
+import { DOC_STATUS, VSTATUS } from "@/lib/constants";
 import { recomputeDeptReviewStatus, notify, notifyAdmins, audit } from "@/lib/workflow";
-import { isBreached } from "@/lib/sla";
-
-/** Load the review that belongs to THIS dept user's department (horizontal RBAC). */
-async function ownReview(vendorId: string) {
-  const user = await requireDept();
-  const review = await prisma.deptReview.findUnique({
-    where: { vendorId_departmentId: { vendorId, departmentId: user.departmentId! } },
-    include: { department: true, vendor: true },
-  });
-  if (!review) redirect("/unauthorized");
-  return { user, review: review! };
-}
 
 const ownDocument = loadOwnedDocument;
 
@@ -154,26 +140,3 @@ export async function documentReviewAction(prev: unknown, formData: FormData) {
   }
 }
 
-export async function flagVendor(_prev: unknown, formData: FormData) {
-  const vendorId = String(formData.get("vendorId") || "");
-  const comment = String(formData.get("comment") || "").trim();
-  if (!comment) return { error: "Describe the issue you're flagging." };
-  const { user, review } = await ownReview(vendorId);
-  const everBreached = review.everBreached || isBreached(review.slaDueAt, review.slaState);
-  const wasRunning = review.slaState === "RUNNING";
-
-  await prisma.deptReview.update({
-    where: { id: review.id },
-    data: {
-      status: REVIEW_STATUS.FLAGGED, decidedById: user.id, comment, everBreached,
-      ...(wasRunning ? { slaState: "PAUSED", slaPausedAt: new Date() } : {}),
-    },
-  });
-  await prisma.vendor.update({ where: { id: vendorId }, data: { status: VSTATUS.FLAGGED } });
-  await prisma.comment.create({ data: { vendorId, departmentId: user.departmentId, authorId: user.id, body: comment, kind: "FLAG" } });
-  await audit(user.id, `FLAG_${review.department.key}`, vendorId, comment);
-  await notifyAdmins(`${review.department.name} flagged "${review.vendor.name}" for audit: ${comment}`, vendorId);
-  revalidatePath(`/dept/review/${vendorId}`);
-  revalidatePath("/dept");
-  return { ok: "Flagged to admin for audit." };
-}

@@ -6,23 +6,20 @@ import DownloadDocumentButton from "@/app/components/DownloadDocumentButton";
 import { requireAdmin } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { getDocumentContent, isRichDocType, buildDocumentText } from "@/lib/documentContent";
-import { VSTATUS } from "@/lib/constants";
 
-export default async function OnboardedDocumentPage({
+export default async function AdminVendorDocumentPage({
   params,
 }: {
-  params: Promise<{ vendorId: string; documentId: string }>;
+  params: Promise<{ id: string; documentId: string }>;
 }) {
   await requireAdmin();
-  const { vendorId, documentId } = await params;
+  const { id: vendorId, documentId } = await params;
 
   const document = await prisma.document.findUnique({
     where: { id: documentId },
     include: { documentType: true, vendor: true },
   });
-  if (!document || document.vendorId !== vendorId || document.vendor.status !== VSTATUS.ONBOARDED) {
-    redirect("/dept");
-  }
+  if (!document || document.vendorId !== vendorId) redirect(`/admin/vendors/${vendorId}`);
 
   const content = getDocumentContent(document.documentType.key, document.vendor);
   const rich = isRichDocType(document.documentType.key);
@@ -34,12 +31,12 @@ export default async function OnboardedDocumentPage({
 
   return (
     <Shell
-      active="procurement"
+      active="dashboard"
       title={`${document.documentType.name} — Document`}
       crumbs={
         <>
-          <Link href="/dept">Procurement Review</Link><span className="crumb-sep">/</span>
-          <Link href={`/dept/onboarded/${vendorId}`}>{document.vendor.name}</Link><span className="crumb-sep">/</span>
+          <Link href="/admin">Status Dashboard</Link><span className="crumb-sep">/</span>
+          <Link href={`/admin/vendors/${vendorId}`}>{document.vendor.name}</Link><span className="crumb-sep">/</span>
           {document.documentType.name}
         </>
       }

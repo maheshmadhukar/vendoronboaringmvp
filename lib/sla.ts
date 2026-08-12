@@ -1,7 +1,5 @@
 // SLA clock: working-day math + cutoff rules + pause/resume.
 
-const DAY = 24 * 60 * 60 * 1000;
-
 function isWeekend(d: Date) {
   const day = d.getDay();
   return day === 0 || day === 6; // Sun | Sat
@@ -69,10 +67,21 @@ export function resumeDue(due: Date, pausedAt: Date): Date {
   return new Date(due.getTime() + pausedMs);
 }
 
-/** Calendar days until due (0 = due today, 1 = due tomorrow, -1 = one day overdue). */
-export function daysLeft(due: Date | null): number | null {
+/** Working days until due (0 = due today, 1 = due tomorrow working-day-wise,
+ * negative = overdue by that many working days). Skips weekends both ways. */
+export function workingDaysLeft(due: Date | null): number | null {
   if (!due) return null;
-  return Math.round((startOfDay(due).getTime() - startOfDay(new Date()).getTime()) / DAY);
+  const today = startOfDay(new Date());
+  const target = startOfDay(due);
+  if (target.getTime() === today.getTime()) return 0;
+  const forward = target.getTime() > today.getTime();
+  let count = 0;
+  const cursor = new Date(today);
+  while (cursor.getTime() !== target.getTime()) {
+    cursor.setDate(cursor.getDate() + (forward ? 1 : -1));
+    if (!isWeekend(cursor)) count += forward ? 1 : -1;
+  }
+  return count;
 }
 
 export type SlaVisual = { tone: "good" | "warn" | "bad" | "neutral"; label: string; pct: number };
@@ -88,7 +97,7 @@ export function slaVisual(
   if (!due) return { tone: "neutral", label: "—", pct: 0 };
 
   const breach = isBreached(due, slaState);
-  const dl = daysLeft(due);
+  const dl = workingDaysLeft(due);
   const pct = startedAt ? pctElapsed(startedAt, due) : 0;
 
   if (breach) return { tone: "bad", label: dl != null && dl < 0 ? `Breached ${Math.abs(dl)}d ago` : "Breached", pct: 100 };
@@ -112,7 +121,7 @@ type ReviewSlaFields = { slaStartedAt: Date | null; slaDueAt: Date | null; slaSt
  */
 export function reviewSlaVisual(r: ReviewSlaFields): SlaVisual {
   if (r.everBreached) {
-    const dl = daysLeft(r.slaDueAt);
+    const dl = workingDaysLeft(r.slaDueAt);
     return { tone: "bad", label: dl != null && dl < 0 ? `Breached ${Math.abs(dl)}d ago` : "Breached", pct: 100 };
   }
   return slaVisual(r.slaStartedAt, r.slaDueAt, r.slaState);

@@ -5,8 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/session";
 import { VSTATUS } from "@/lib/constants";
-import { recomputeVendorStatus, notify, notifyDept, audit, getConfig } from "@/lib/workflow";
-import { resumeDue, addWorkingDays } from "@/lib/sla";
+import { recomputeVendorStatus, notify, audit, getConfig } from "@/lib/workflow";
 
 const DOC_FORMATS = ["doc", "pdf", "jpeg"] as const;
 
@@ -43,6 +42,13 @@ export async function inviteVendor(_prev: unknown, formData: FormData) {
   });
 
   const templateIds = formData.getAll("templateIds").map(String).filter(Boolean);
+  if (formData.get("sendMsaNda") === "on") {
+    const msaNda = await prisma.buyerDocTemplate.findMany({
+      where: { key: { in: ["MSA", "NDA"] }, active: true },
+      select: { id: true },
+    });
+    for (const t of msaNda) if (!templateIds.includes(t.id)) templateIds.push(t.id);
+  }
   if (templateIds.length > 0) {
     await prisma.vendorBuyerDoc.createMany({
       data: templateIds.map((templateId) => ({ vendorId: vendor.id, templateId })),
@@ -203,40 +209,6 @@ export async function resumeVendor(formData: FormData) {
   await audit(admin.id, "RESUME", vendorId);
   revalidatePath(`/admin/vendors/${vendorId}`);
   revalidatePath("/admin");
-}
-
-export async function clearFlag(formData: FormData) {
-  const admin = await requireAdmin();
-  const vendorId = String(formData.get("vendorId") || "");
-
-  const flagged = await prisma.deptReview.findMany({
-    where: { vendorId, status: "FLAGGED" },
-    include: { department: true, vendor: true },
-  });
-
-  for (const r of flagged) {
-    const extendDays = Math.max(0, Number(formData.get(`extendDays_${r.departmentId}`) || 0));
-    let newDue = r.slaDueAt;
-    if (newDue && r.slaPausedAt) newDue = resumeDue(newDue, r.slaPausedAt);
-    if (newDue && extendDays > 0) newDue = addWorkingDays(newDue, extendDays);
-
-    await prisma.deptReview.update({
-      where: { id: r.id },
-      data: { status: "PENDING", slaState: "RUNNING", slaPausedAt: null, slaDueAt: newDue },
-    });
-    await notifyDept(
-      r.departmentId,
-      `The flag on "${r.vendor.name}" has been cleared${extendDays > 0 ? ` — SLA extended by ${extendDays} working day(s)` : ""}. Review has resumed.`,
-      vendorId
-    );
-  }
-
-  await prisma.vendor.update({ where: { id: vendorId }, data: { status: VSTATUS.IN_REVIEW } });
-  await recomputeVendorStatus(vendorId);
-  await audit(admin.id, "CLEAR_FLAG", vendorId);
-  revalidatePath(`/admin/vendors/${vendorId}`);
-  revalidatePath("/admin");
-  revalidatePath("/dept");
 }
 
 export async function finalApprove(formData: FormData) {

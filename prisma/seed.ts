@@ -32,15 +32,17 @@ async function main() {
 
   // Departments
   const deptDefs = [
-    { key: "PROCUREMENT", name: "Procurement" },
-    { key: "FINANCE", name: "Finance" },
-    { key: "LEGAL", name: "Legal" },
-    { key: "HR", name: "HR" },
+    { key: "PROCUREMENT", name: "Procurement", slaDays: 5 },
+    { key: "FINANCE", name: "Finance", slaDays: 7 },
+    { key: "LEGAL", name: "Legal", slaDays: 10 },
+    { key: "HR", name: "HR", slaDays: 5 },
   ];
   const depts: Record<string, string> = {};
+  const deptSlaDays: Record<string, number> = {};
   for (const d of deptDefs) {
-    const rec = await prisma.department.create({ data: { key: d.key, name: d.name, slaDays: 5 } });
+    const rec = await prisma.department.create({ data: { key: d.key, name: d.name, slaDays: d.slaDays } });
     depts[d.key] = rec.id;
+    deptSlaDays[d.key] = d.slaDays;
   }
 
   // Admin
@@ -170,7 +172,7 @@ async function main() {
       // Dept reviews
       for (const [key, id] of Object.entries(depts)) {
         const r = opts.reviews?.[key] ?? { status: "PENDING" };
-        const { start, due } = computeDueAt(submittedAt, 5, CUTOFF);
+        const { start, due } = computeDueAt(submittedAt, deptSlaDays[key], CUTOFF);
         let slaState = "RUNNING";
         if (r.status === "APPROVED" || r.status === "REJECTED") slaState = "MET";
         else if (r.status === "CHANGES_REQUESTED") slaState = "PAUSED";
@@ -218,12 +220,6 @@ async function main() {
     reviews: { PROCUREMENT: { status: "PENDING" }, FINANCE: { status: "PENDING" }, LEGAL: { status: "PENDING" }, HR: { status: "PENDING" } },
   });
 
-  // Demo: force Northline's Legal review due today, to show the "due today" SLA color.
-  await prisma.deptReview.update({
-    where: { vendorId_departmentId: { vendorId: northline.id, departmentId: depts["LEGAL"] } },
-    data: { slaStartedAt: daysAgo(3), slaDueAt: new Date(), slaState: "RUNNING" },
-  });
-
   // Attach the buyer's MSA + NDA templates to a couple of vendors, as if sent at invite time.
   // Northline has signed both (demo "Done" state); Anugrah hasn't signed either yet (demo "In progress" state).
   for (const templateId of Object.values(buyerDocTemplates)) {
@@ -249,26 +245,20 @@ async function main() {
     docOverrides: Object.fromEntries(allDocKeys.map((k) => [k, "APPROVED"])),
   });
 
-  // Kestrel — flagged to admin
-  const kestrel = await makeVendor({
+  // Kestrel — mixed review, some departments done, some still pending
+  await makeVendor({
     name: "Kestrel Staffing Partners",
     email: "hello@kestrelstaffing.in",
     withAccount: false,
     createdByProc: true,
-    status: "FLAGGED",
+    status: "IN_REVIEW",
     submittedDaysAgo: 5,
     value: 900000,
     reviews: {
       PROCUREMENT: { status: "APPROVED" },
-      FINANCE: { status: "FLAGGED", comment: "Turnover figures look inconsistent — flagged for admin audit." },
+      FINANCE: { status: "APPROVED" },
       LEGAL: { status: "PENDING" }, HR: { status: "PENDING" },
     },
-  });
-
-  // Demo: Kestrel's HR review nearing SLA (documents submitted, none reviewed yet).
-  await prisma.deptReview.update({
-    where: { vendorId_departmentId: { vendorId: kestrel.id, departmentId: depts["HR"] } },
-    data: { slaStartedAt: daysAgo(3), slaDueAt: new Date(Date.now() + 2 * 86400000), slaState: "RUNNING" },
   });
 
   // Sterling & Orbit — onboarded (analytics)

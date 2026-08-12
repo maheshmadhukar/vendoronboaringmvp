@@ -2,15 +2,16 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import Shell from "@/app/components/Shell";
 import { Chip, Tracker } from "@/app/components/ui";
+import DeptDocumentsModal from "./DeptDocumentsModal";
 import { requireAdmin } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { getConfig, pipelineStage } from "@/lib/workflow";
 import {
-  DEPT_LABEL, DEPT_ORDER, VSTATUS, VSTATUS_LABEL, VSTATUS_TONE, REVIEW_STATUS, REVIEW_TONE,
+  DEPT, DEPT_LABEL, DEPT_ORDER, VSTATUS, VSTATUS_LABEL, VSTATUS_TONE, REVIEW_STATUS, REVIEW_TONE,
 } from "@/lib/constants";
 import { fmtDate, fmtDateTime, fmtMoney } from "@/lib/format";
-import { slaVisual } from "@/lib/sla";
-import { haltVendor, resumeVendor, finalApprove, clearFlag } from "@/app/actions/admin";
+import { reviewSlaVisual } from "@/lib/sla";
+import { haltVendor, resumeVendor, finalApprove } from "@/app/actions/admin";
 
 export default async function AdminVendor({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -61,20 +62,6 @@ export default async function AdminVendor({ params }: { params: Promise<{ id: st
           </div>
         ) : null}
 
-        {vendor.status === VSTATUS.FLAGGED ? (
-          <form action={clearFlag} style={{ marginBottom: 14 }}>
-            <input type="hidden" name="vendorId" value={vendor.id} />
-            {vendor.deptReviews.filter((r) => r.status === "FLAGGED").map((r) => (
-              <label key={r.id} style={{ display: "block", fontSize: 12.5, marginBottom: 6 }}>
-                Extend SLA for {DEPT_LABEL[r.department.key]} by
-                <input type="number" name={`extendDays_${r.departmentId}`} defaultValue={0} min={0} style={{ width: 56, margin: "0 6px" }} />
-                working days
-              </label>
-            ))}
-            <button className="btn" style={{ marginTop: 4 }}>Clear flag(s) &amp; return to review</button>
-          </form>
-        ) : null}
-
         {vendor.status === VSTATUS.HALTED ? (
           <form action={resumeVendor}>
             <input type="hidden" name="vendorId" value={vendor.id} />
@@ -110,32 +97,65 @@ export default async function AdminVendor({ params }: { params: Promise<{ id: st
         <div className="card card-pad">
           <div className="section-label">Department reviews</div>
           {vendor.deptReviews.length === 0 ? <p className="muted" style={{ fontSize: 13 }}>Not submitted.</p> :
-            DEPT_ORDER.map((k) => {
-              const r = vendor.deptReviews.find((x) => x.department.key === k);
-              if (!r) return null;
-              const sla = slaVisual(r.slaStartedAt, r.slaDueAt, r.slaState);
-              return (
+            (() => {
+              const shownReviews = vendor.deptReviews.filter((r) => r.department.key !== DEPT.PROCUREMENT);
+              const timelineStart = shownReviews[0]?.slaStartedAt ?? null;
+              const timelineEnd = shownReviews.reduce(
+                (max, r) => (r.slaDueAt && (!max || r.slaDueAt > max) ? r.slaDueAt : max),
+                null as Date | null
+              );
+              function pctOfTimeline(d: Date | null): number {
+                if (!timelineStart || !timelineEnd || !d) return 0;
+                const total = timelineEnd.getTime() - timelineStart.getTime();
+                if (total <= 0) return 100;
+                return Math.min(100, Math.max(0, ((d.getTime() - timelineStart.getTime()) / total) * 100));
+              }
+              const todayPct = pctOfTimeline(new Date());
+
+              return DEPT_ORDER.filter((k) => k !== DEPT.PROCUREMENT).map((k) => {
+                const r = vendor.deptReviews.find((x) => x.department.key === k);
+                if (!r) return null;
+                const sla = reviewSlaVisual(r);
+                const trackPct = pctOfTimeline(r.slaDueAt);
+                return (
                 <div key={k} style={{ padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div><b style={{ fontSize: 13 }}>{DEPT_LABEL[k]}</b>{r.comment ? <div className="sub">{r.comment}</div> : null}</div>
-                    <Chip tone={REVIEW_TONE[r.status]}>{r.status.replace(/_/g, " ").toLowerCase()}</Chip>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <DeptDocumentsModal
+                        deptLabel={DEPT_LABEL[k]}
+                        vendorId={vendor.id}
+                        documents={vendor.documents.filter((d) => d.documentType.departmentKey === k)}
+                      />
+                      <Chip tone={REVIEW_TONE[r.status]}>{r.status.replace(/_/g, " ").toLowerCase()}</Chip>
+                    </div>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
-                    <span className="sub" style={{ fontSize: 11 }}>SLA: {r.department.slaDays} working days</span>
+                    <span className="sub" style={{ fontSize: 11 }}>SLA: {r.department.slaDays} working days · due {fmtDate(r.slaDueAt)}</span>
                     <Chip tone={sla.tone}>{sla.label}</Chip>
                   </div>
-                  <div className="bar-track" style={{ marginTop: 4, height: 5 }}>
-                    <div
-                      className="bar-fill"
-                      style={{
-                        width: `${sla.pct}%`,
-                        background: sla.tone === "warn" ? "var(--warn)" : sla.tone === "bad" ? "var(--bad)" : sla.tone === "neutral" ? "var(--ink-faint)" : "var(--good)",
-                      }}
-                    />
+                  <div style={{ position: "relative", marginTop: 14 }}>
+                    <span
+                      aria-hidden="true"
+                      title={`Today — ${fmtDate(new Date())}`}
+                      style={{ position: "absolute", top: -12, left: `${todayPct}%`, transform: "translateX(-50%)", fontSize: 10, lineHeight: 1, color: "var(--ink-soft)" }}
+                    >
+                      ▼
+                    </span>
+                    <div className="bar-track" style={{ height: 5, width: `${trackPct}%` }}>
+                      <div
+                        className="bar-fill"
+                        style={{
+                          width: `${sla.pct}%`,
+                          background: sla.tone === "warn" ? "var(--warn)" : sla.tone === "bad" ? "var(--bad)" : sla.tone === "neutral" ? "var(--ink-faint)" : "var(--good)",
+                        }}
+                      />
+                    </div>
                   </div>
                 </div>
-              );
-            })}
+                );
+              });
+            })()}
         </div>
       </div>
 

@@ -3,11 +3,13 @@
 import { useActionState } from "react";
 import { inviteVendor } from "@/app/actions/admin";
 
-export default function InviteVendorForm({ templates }: { templates: { id: string; name: string }[] }) {
+export default function InviteVendorForm({ templates }: { templates: { id: string; name: string; key: string }[] }) {
   const [state, action, pending] = useActionState(
     inviteVendor,
     null as { error?: string; ok?: string; link?: string } | null
   );
+  const msaNda = templates.filter((t) => t.key === "MSA" || t.key === "NDA");
+  const others = templates.filter((t) => t.key !== "MSA" && t.key !== "NDA");
   return (
     <form action={action}>
       <div className="form-grid">
@@ -24,7 +26,12 @@ export default function InviteVendorForm({ templates }: { templates: { id: strin
         <div className="field">
           <label>Buyer documents to send</label>
           <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-            {templates.map((t) => (
+            {msaNda.length > 0 ? (
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 400 }}>
+                <input type="checkbox" name="sendMsaNda" defaultChecked /> MSA &amp; NDA
+              </label>
+            ) : null}
+            {others.map((t) => (
               <label key={t.id} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 400 }}>
                 <input type="checkbox" name="templateIds" value={t.id} defaultChecked /> {t.name}
               </label>

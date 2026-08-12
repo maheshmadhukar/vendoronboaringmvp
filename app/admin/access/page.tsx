@@ -24,7 +24,7 @@ export default async function AccessPage() {
       <div className="card card-pad">
         <div className="card-title">Invite a vendor</div>
         <div className="card-sub">Buyer-initiated onboarding only — this sends an invite link + OTP sign-up.</div>
-        <InviteVendorForm templates={buyerDocTemplates.map((t) => ({ id: t.id, name: t.name }))} />
+        <InviteVendorForm templates={buyerDocTemplates.map((t) => ({ id: t.id, name: t.name, key: t.key }))} />
       </div>
 
       <div className="card" style={{ marginTop: 18 }}>

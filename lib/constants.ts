@@ -27,7 +27,6 @@ export const VSTATUS = {
   SUBMITTED: "SUBMITTED",
   IN_REVIEW: "IN_REVIEW",
   CHANGES_REQUESTED: "CHANGES_REQUESTED",
-  FLAGGED: "FLAGGED",
   HALTED: "HALTED",
   DEPT_APPROVED: "DEPT_APPROVED",
   FINAL_PENDING: "FINAL_PENDING",
@@ -41,7 +40,6 @@ export const VSTATUS_LABEL: Record<string, string> = {
   SUBMITTED: "Submitted",
   IN_REVIEW: "In review",
   CHANGES_REQUESTED: "Changes requested",
-  FLAGGED: "Flagged to admin",
   HALTED: "Onboarding paused",
   DEPT_APPROVED: "Dept-approved",
   FINAL_PENDING: "Final approval pending",
@@ -56,7 +54,6 @@ export const VSTATUS_TONE: Record<string, string> = {
   SUBMITTED: "info",
   IN_REVIEW: "info",
   CHANGES_REQUESTED: "warn",
-  FLAGGED: "warn",
   HALTED: "bad",
   DEPT_APPROVED: "info",
   FINAL_PENDING: "info",
@@ -69,7 +66,6 @@ export const REVIEW_STATUS = {
   APPROVED: "APPROVED",
   REJECTED: "REJECTED",
   CHANGES_REQUESTED: "CHANGES_REQUESTED",
-  FLAGGED: "FLAGGED",
 } as const;
 
 export const REVIEW_TONE: Record<string, string> = {
@@ -77,7 +73,6 @@ export const REVIEW_TONE: Record<string, string> = {
   APPROVED: "good",
   REJECTED: "bad",
   CHANGES_REQUESTED: "warn",
-  FLAGGED: "warn",
 };
 
 export const DOC_STATUS = {

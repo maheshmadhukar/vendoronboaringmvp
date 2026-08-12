@@ -1,6 +1,6 @@
 import { prisma } from "./prisma";
 import { VSTATUS, REVIEW_STATUS, SLA_STATE, DOC_STATUS, ROLE, DEPT_LABEL } from "./constants";
-import { computeDueAt, isBreached, daysLeft } from "./sla";
+import { computeDueAt, isBreached, workingDaysLeft } from "./sla";
 import { getBuyerCoveredKeys } from "./vendor";
 
 export async function getConfig() {
@@ -61,7 +61,7 @@ export async function sendSlaReminders() {
   });
   for (const r of reviews) {
     if (isBreached(r.slaDueAt, r.slaState)) continue;
-    const dl = daysLeft(r.slaDueAt);
+    const dl = workingDaysLeft(r.slaDueAt);
     if (dl == null || dl > 2) continue;
     const managerId = r.department.managerId;
     if (!managerId) continue; // Procurement has no standalone manager
@@ -188,7 +188,6 @@ export async function recomputeVendorStatus(vendorId: string) {
   const reviews = vendor.deptReviews;
   if (reviews.length === 0) return;
 
-  const anyFlagged = reviews.some((r) => r.status === REVIEW_STATUS.FLAGGED);
   const anyRejected = reviews.some((r) => r.status === REVIEW_STATUS.REJECTED);
   const anyChanges = reviews.some(
     (r) => r.status === REVIEW_STATUS.CHANGES_REQUESTED
@@ -196,8 +195,7 @@ export async function recomputeVendorStatus(vendorId: string) {
   const allApproved = reviews.every((r) => r.status === REVIEW_STATUS.APPROVED);
 
   let next = vendor.status;
-  if (anyFlagged) next = VSTATUS.FLAGGED;
-  else if (anyRejected) next = VSTATUS.REJECTED;
+  if (anyRejected) next = VSTATUS.REJECTED;
   else if (anyChanges) next = VSTATUS.CHANGES_REQUESTED;
   else if (allApproved) {
     const cfg = await getConfig();
@@ -235,7 +233,6 @@ export function pipelineStage(status: string): number {
       return 1;
     case VSTATUS.IN_REVIEW:
     case VSTATUS.CHANGES_REQUESTED:
-    case VSTATUS.FLAGGED:
     case VSTATUS.HALTED:
       return 2;
     case VSTATUS.DEPT_APPROVED:

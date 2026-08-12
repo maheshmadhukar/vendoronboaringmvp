@@ -5,7 +5,7 @@ import { requireAdmin } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { VSTATUS, VSTATUS_LABEL, VSTATUS_TONE, DEPT_ORDER, DEPT_LABEL } from "@/lib/constants";
 import { fmtDate, fmtMoney } from "@/lib/format";
-import { reviewSlaVisual, daysLeft, isBreached } from "@/lib/sla";
+import { reviewSlaVisual, workingDaysLeft, isBreached } from "@/lib/sla";
 import { resolveDashboardRange, inRange } from "@/lib/period";
 import { sendSlaReminders } from "@/lib/workflow";
 import { resumeVendor } from "@/app/actions/admin";
@@ -21,7 +21,7 @@ function slaDotColor(r: { slaDueAt: Date | null; slaState: string; everBreached:
   if (r.everBreached || isBreached(r.slaDueAt, r.slaState)) return "var(--bad)";
   if (r.slaState === "MET") return "var(--good)";
   if (r.slaState !== "RUNNING" || !r.slaDueAt) return "var(--ink-faint)";
-  const dl = daysLeft(r.slaDueAt);
+  const dl = workingDaysLeft(r.slaDueAt);
   if (dl == null) return "var(--ink-faint)";
   if (dl <= 0) return "var(--due)";
   if (dl <= 2) return "var(--warn)";
@@ -121,7 +121,7 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
   const submittedSortHref = `?tab=${tab}&sort=submitted&dir=${sortingBySubmitted && sortDir === "desc" ? "asc" : "desc"}`;
 
   const attention = vendors.filter((v) =>
-    [VSTATUS.FLAGGED, VSTATUS.FINAL_PENDING, VSTATUS.HALTED].includes(v.status as never)
+    [VSTATUS.FINAL_PENDING, VSTATUS.HALTED].includes(v.status as never)
   );
   const inFlight = inProgressList.length;
 
@@ -159,7 +159,7 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
       <div className="card" id="pending-action" style={{ marginBottom: 18 }}>
         <div className="card-pad" style={{ paddingBottom: 0 }}><div className="section-label">Pending your action</div></div>
         {attention.length === 0 ? (
-          <Empty title="Nothing needs you right now" hint="Flagged and final-approval items will appear here." />
+          <Empty title="Nothing needs you right now" hint="Final-approval items will appear here." />
         ) : (
           <div className="table-wrap">
             <table className="table">
@@ -171,8 +171,7 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
                     <td><Chip tone={VSTATUS_TONE[v.status]}>{VSTATUS_LABEL[v.status]}</Chip></td>
                     <td className="tnum"><SlaCell reviews={v.deptReviews} /></td>
                     <td className="sub">
-                      {v.status === VSTATUS.FLAGGED ? "Flagged by a department — audit needed" :
-                       v.status === VSTATUS.FINAL_PENDING ? "All departments approved — final approval" :
+                      {v.status === VSTATUS.FINAL_PENDING ? "All departments approved — final approval" :
                        "Onboarding paused — review or resume"}
                     </td>
                     <td><Link className="btn sm primary" href={`/admin/vendors/${v.id}`}>Open</Link></td>

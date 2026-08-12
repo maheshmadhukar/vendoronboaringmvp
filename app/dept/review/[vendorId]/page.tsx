@@ -6,12 +6,11 @@ import { requireDept } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { pipelineStage } from "@/lib/workflow";
 import {
-  DEPT_LABEL, DEPT_ORDER, REVIEW_STATUS, REVIEW_TONE, ROLE, VSTATUS, VSTATUS_LABEL, VSTATUS_TONE,
+  DEPT_LABEL, DEPT_ORDER, REVIEW_TONE, ROLE, VSTATUS, VSTATUS_LABEL, VSTATUS_TONE,
 } from "@/lib/constants";
 import { fmtDate, fmtDateTime, fmtMoney } from "@/lib/format";
 import { slaVisual } from "@/lib/sla";
 import { getBuyerCoveredKeys } from "@/lib/vendor";
-import ReviewActions from "./ReviewActions";
 import DocumentReviewRow from "./DocumentReviewRow";
 
 export default async function ReviewPage({ params }: { params: Promise<{ vendorId: string }> }) {
@@ -47,9 +46,6 @@ export default async function ReviewPage({ params }: { params: Promise<{ vendorI
     (d) => d.documentType.departmentKey === dept.key && !coveredKeys.has(d.documentType.key)
   );
 
-  const canFlag =
-    review.status !== REVIEW_STATUS.FLAGGED &&
-    ![VSTATUS.ONBOARDED, VSTATUS.REJECTED].includes(vendor.status as never);
   const halted = vendor.status === VSTATUS.HALTED;
   const sla = slaVisual(review.slaStartedAt, review.slaDueAt, review.slaState);
 
@@ -124,7 +120,7 @@ export default async function ReviewPage({ params }: { params: Promise<{ vendorI
               <span className="sub" style={{ fontSize: 11 }}>SLA</span>
               <Chip tone={sla.tone}>{sla.label}</Chip>
             </div>
-            <div className="bar-track" style={{ height: 5, marginBottom: 14 }}>
+            <div className="bar-track" style={{ height: 5 }}>
               <div
                 className="bar-fill"
                 style={{
@@ -133,9 +129,6 @@ export default async function ReviewPage({ params }: { params: Promise<{ vendorI
                 }}
               />
             </div>
-            {canFlag ? <ReviewActions vendorId={vendor.id} disabled={halted} /> : (
-              <p className="muted" style={{ fontSize: 13 }}>No further actions available for this vendor&apos;s current state.</p>
-            )}
           </div>
         </div>
       </div>
