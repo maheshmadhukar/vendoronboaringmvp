@@ -4,9 +4,13 @@ import { computeDueAt, isBreached, workingDaysLeft } from "./sla";
 import { getBuyerCoveredKeys } from "./vendor";
 
 export async function getConfig() {
-  let cfg = await prisma.config.findUnique({ where: { id: 1 } });
-  if (!cfg) cfg = await prisma.config.create({ data: { id: 1 } });
-  return cfg;
+  // upsert (not find-then-create) so two concurrent cold-start lambdas can't
+  // both miss and race to create id:1 — which would 500 on the unique constraint.
+  return prisma.config.upsert({
+    where: { id: 1 },
+    create: { id: 1 },
+    update: {},
+  });
 }
 
 export async function notify(
@@ -151,8 +155,9 @@ export async function recomputeDeptReviewStatus(vendorId: string, departmentId: 
   else if (allApproved) next = REVIEW_STATUS.APPROVED;
   else next = REVIEW_STATUS.PENDING;
 
-  const data: { status: string; slaState?: string; slaPausedAt?: Date | null; everBreached?: boolean } = { status: next };
+  const data: { status: string; slaState?: string; slaPausedAt?: Date | null; everBreached?: boolean; decidedAt?: Date } = { status: next };
   const terminal = next === REVIEW_STATUS.REJECTED || next === REVIEW_STATUS.APPROVED;
+  if (terminal && !review.decidedAt) data.decidedAt = new Date();
   if (terminal && review.slaState !== SLA_STATE.MET) {
     data.slaState = SLA_STATE.MET;
   } else if (next === REVIEW_STATUS.CHANGES_REQUESTED && review.slaState !== SLA_STATE.PAUSED) {

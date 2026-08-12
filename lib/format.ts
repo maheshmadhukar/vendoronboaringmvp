@@ -24,6 +24,14 @@ export function fmtMoney(n?: number | null): string {
   return "₹ " + n.toLocaleString("en-IN");
 }
 
+/** Compact Indian currency for KPI tiles: ₹1.8Cr, ₹18.0L, ₹4,200. */
+export function fmtMoneyCompact(n?: number | null): string {
+  if (n == null) return "—";
+  if (n >= 1e7) return `₹${(n / 1e7).toFixed(1)}Cr`;
+  if (n >= 1e5) return `₹${(n / 1e5).toFixed(1)}L`;
+  return "₹" + Math.round(n).toLocaleString("en-IN");
+}
+
 export function relTime(d?: Date | string | null): string {
   if (!d) return "—";
   const date = typeof d === "string" ? new Date(d) : d;

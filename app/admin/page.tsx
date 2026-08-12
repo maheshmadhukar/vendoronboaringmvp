@@ -6,8 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { VSTATUS, VSTATUS_LABEL, VSTATUS_TONE, DEPT_ORDER, DEPT_LABEL } from "@/lib/constants";
 import { fmtDate, fmtMoney } from "@/lib/format";
 import { reviewSlaVisual, workingDaysLeft, isBreached } from "@/lib/sla";
-import { resolveDashboardRange, inRange } from "@/lib/period";
-import { sendSlaReminders } from "@/lib/workflow";
+import { resolveDashboardRange } from "@/lib/period";
 import { resumeVendor } from "@/app/actions/admin";
 import Spotlight from "./Spotlight";
 import RangeSelect from "./RangeSelect";
@@ -73,18 +72,16 @@ type VendorTab = "all" | "inprogress" | "onboarded" | "rejected";
 type SearchParams = { sort?: string; dir?: string; tab?: string; focus?: string; range?: string };
 
 export default async function AdminDashboard({ searchParams }: { searchParams: Promise<SearchParams> }) {
-  await requireAdmin();
-  const sp = await searchParams;
-  await sendSlaReminders();
-  const allVendors = await prisma.vendor.findMany({
+  const [, sp] = await Promise.all([requireAdmin(), searchParams]);
+  const { mode: rangeMode, from: rangeFrom } = resolveDashboardRange(sp.range);
+  // Date-range filter pushed into SQL (previously: load every vendor, filter in
+  // JS). A vendor is in-window if it was created OR submitted on/after the start;
+  // the old upper bound was `now`, a no-op for past timestamps, so it's dropped.
+  const vendors = await prisma.vendor.findMany({
+    where: { OR: [{ createdAt: { gte: rangeFrom } }, { submittedAt: { gte: rangeFrom } }] },
     orderBy: { updatedAt: "desc" },
     include: { deptReviews: { include: { department: true } }, buyerDocs: { include: { template: true } } },
   });
-  const { mode: rangeMode, from: rangeFrom } = resolveDashboardRange(sp.range);
-  const now = new Date();
-  const vendors = allVendors.filter(
-    (v) => inRange(v.createdAt, rangeFrom, now) || inRange(v.submittedAt, rangeFrom, now)
-  );
 
   const tab: VendorTab =
     sp.tab === "all" ? "all" : sp.tab === "onboarded" ? "onboarded" : sp.tab === "rejected" ? "rejected" : "inprogress";

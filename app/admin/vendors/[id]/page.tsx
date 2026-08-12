@@ -15,18 +15,22 @@ import { haltVendor, resumeVendor, finalApprove } from "@/app/actions/admin";
 
 export default async function AdminVendor({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  await requireAdmin();
-  const cfg = await getConfig();
-  const vendor = await prisma.vendor.findUnique({
-    where: { id },
-    include: {
-      deptReviews: { include: { department: true } },
-      documents: { include: { documentType: true } },
-      comments: { include: { author: true }, orderBy: { createdAt: "asc" } },
-    },
-  });
+  await requireAdmin(); // authorize before any data access (RBAC gate)
+  // The three reads below are independent — run them in one parallel batch
+  // instead of three serial round-trips to Turso.
+  const [cfg, vendor, logs] = await Promise.all([
+    getConfig(),
+    prisma.vendor.findUnique({
+      where: { id },
+      include: {
+        deptReviews: { include: { department: true } },
+        documents: { include: { documentType: true } },
+        comments: { include: { author: true }, orderBy: { createdAt: "asc" } },
+      },
+    }),
+    prisma.auditLog.findMany({ where: { targetId: id }, orderBy: { createdAt: "desc" }, take: 10, include: { actor: true } }),
+  ]);
   if (!vendor) redirect("/admin");
-  const logs = await prisma.auditLog.findMany({ where: { targetId: id }, orderBy: { createdAt: "desc" }, take: 10, include: { actor: true } });
 
   const allApproved = vendor.deptReviews.length > 0 && vendor.deptReviews.every((r) => r.status === REVIEW_STATUS.APPROVED);
   const terminal = [VSTATUS.ONBOARDED, VSTATUS.REJECTED].includes(vendor.status as never);

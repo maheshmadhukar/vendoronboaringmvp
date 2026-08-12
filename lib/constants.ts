@@ -83,6 +83,39 @@ export const DOC_STATUS = {
   CHANGES_REQUESTED: "CHANGES_REQUESTED",
 } as const;
 
+// Categorized reason a document was rejected or sent back for changes.
+// Stored on Document.rejectionReason; powers the rework/quality analytics.
+export const REJECTION_REASON = {
+  NAME_MISMATCH: "NAME_MISMATCH",
+  INVALID_DOCUMENT: "INVALID_DOCUMENT",
+  EXPIRED: "EXPIRED",
+  ILLEGIBLE: "ILLEGIBLE",
+  INCOMPLETE: "INCOMPLETE",
+  WRONG_DOCUMENT: "WRONG_DOCUMENT",
+  OTHER: "OTHER",
+} as const;
+export type RejectionReason = (typeof REJECTION_REASON)[keyof typeof REJECTION_REASON];
+
+export const REJECTION_REASON_LABEL: Record<string, string> = {
+  NAME_MISMATCH: "Name / entity mismatch",
+  INVALID_DOCUMENT: "Invalid or unverifiable document",
+  EXPIRED: "Expired document",
+  ILLEGIBLE: "Illegible / poor scan",
+  INCOMPLETE: "Incomplete information",
+  WRONG_DOCUMENT: "Wrong document uploaded",
+  OTHER: "Other",
+};
+
+export const REJECTION_REASON_ORDER: RejectionReason[] = [
+  "NAME_MISMATCH",
+  "INVALID_DOCUMENT",
+  "INCOMPLETE",
+  "WRONG_DOCUMENT",
+  "EXPIRED",
+  "ILLEGIBLE",
+  "OTHER",
+];
+
 export const SLA_STATE = {
   PENDING: "PENDING",
   RUNNING: "RUNNING",
