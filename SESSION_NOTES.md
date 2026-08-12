@@ -4,6 +4,58 @@ Running log of debugging/perf work, separate from `SCOPE_NOTES.md` (which covers
 
 ---
 
+## 2026-08-13 — Procurement Review rebuild, SLA bar fixes, flag-to-admin removal, merge with analytics PR
+
+**Status:** Built, merged, committed, pushed (`origin` + `public`). Prod Turso schema pushed and reseeded — live.
+
+- **Procurement Review** (`/dept` for Admin) changed from a pending-review queue into
+  a browsable list of **onboarded** vendors (30d/90d/6mo/1yr range filter, reuses
+  `lib/period.ts`'s dashboard-range pattern), each vendor showing its full submitted
+  document set (all departments) read-only.
+- **Read-only document viewer + Download**: new shared components
+  `app/components/MockDocumentContent.tsx` / `DownloadDocumentButton.tsx` (generates a
+  real file client-side from the existing mock content — no real file storage anywhere
+  in this app). Reused from both the Procurement Review flow and a new per-department
+  "▤" icon on the Admin vendor detail page (`DeptDocumentsModal.tsx`), the latter
+  working for vendors at *any* status, not just onboarded.
+- **SLA bar accuracy — several real bugs found and fixed** (`lib/sla.ts`,
+  `prisma/seed.ts`):
+  1. Seed script hardcoded `5` SLA days for every department instead of each dept's
+     real `slaDays` (Finance=7, Legal=10) — due dates looked identical across depts.
+  2. Admin vendor detail page used the raw `slaVisual()` instead of the sticky-
+     `everBreached`-aware `reviewSlaVisual()`, so a review that breached and *then*
+     got approved could wrongly render green "Met".
+  3. Two demo vendors (Northline's Legal review, Kestrel's HR review) had hand-crafted
+     seed overrides giving them an independent `slaStartedAt`, breaking the "every
+     department shares one start date" invariant — both removed.
+  4. Added a shared per-vendor timeline scale so every department's "today" arrow
+     marker aligns at the same x position, bar-track width now proportional to each
+     dept's own due date on that shared scale.
+  5. The "Xd left" countdown was **calendar** days sitting next to a **working**-days
+     SLA figure (could show more days left than the SLA itself) — replaced
+     `daysLeft` with a new `workingDaysLeft` everywhere it's used (Status Dashboard,
+     dept queues, SLA reminders, vendor detail, and analytics' at-risk threshold).
+- **Flag-to-admin removed end-to-end** — the dept escalation action, the admin
+  clear-flag action, every `FLAGGED` status/tone/label constant, and the workflow
+  rollup branch. Kestrel (previously the flagged-demo vendor) repurposed to a plain
+  in-review scenario.
+- **Access & Invites**: dropped "Internal users"; Finance/Legal/HR managers get an
+  inline-editable email (Procurement excluded — no standalone login); removed the
+  cosmetic "Fetch from Workday" widget; combined the MSA + NDA invite checkboxes into
+  one.
+- **Merged the analytics-dashboard PR** (`origin/main` had diverged — 3 real
+  conflicts in `app/actions/dept.ts`, `app/admin/page.tsx`, `prisma/seed.ts`, plus a
+  post-merge fixup in the new `lib/analytics.ts`, which referenced the just-removed
+  `VSTATUS.FLAGGED` and old `daysLeft`). Resolution rule: core-functionality changes
+  (SLA fixes, flag removal) took precedence over anything conflicting; the analytics
+  work itself was untouched.
+- **Deploy checklist items from the previous entry are now done**: prod Turso schema
+  pushed (the 5 new analytics fields + all `@@index` additions + this session's
+  changes) and prod reseeded (55 vendors). `CRON_SECRET` in Vercel env is still
+  unconfirmed — not something this session could check/set.
+
+---
+
 ## 2026-08-12 — Analytics dashboard redesign (enterprise)
 
 **Status:** Built, build green, verified in-browser. **Uncommitted — under local testing.**
