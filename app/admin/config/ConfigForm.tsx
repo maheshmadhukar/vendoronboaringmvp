@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { updateConfig, createDepartment } from "@/app/actions/admin";
+import { updateConfig } from "@/app/actions/admin";
 import { DEPT_LABEL } from "@/lib/constants";
 
 type Cfg = {
@@ -15,25 +15,6 @@ function Toggle({ name, label, defaultChecked }: { name: string; label: string; 
     <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, marginBottom: 10, color: "var(--ink)" }}>
       <input type="checkbox" name={name} defaultChecked={defaultChecked} /> {label}
     </label>
-  );
-}
-
-function AddDepartmentForm() {
-  const [state, action, pending] = useActionState(createDepartment, null as { error?: string; ok?: string } | null);
-  return (
-    <form action={action} style={{ display: "flex", alignItems: "flex-end", gap: 10, flexWrap: "wrap", marginBottom: 6 }}>
-      <div className="field" style={{ marginBottom: 0 }}>
-        <label>Department name</label>
-        <input name="name" placeholder="e.g. Quality Assurance" style={{ width: 220 }} />
-      </div>
-      <div className="field" style={{ marginBottom: 0 }}>
-        <label>Default SLA (days)</label>
-        <input name="slaDays" type="number" defaultValue={5} min={1} style={{ width: 90 }} />
-      </div>
-      <button className="btn sm" disabled={pending}>{pending ? "Adding…" : "Add department"}</button>
-      {state?.error ? <span className="sub" style={{ color: "var(--bad)" }}>{state.error}</span> : null}
-      {state?.ok ? <span className="sub" style={{ color: "var(--good)" }}>{state.ok}</span> : null}
-    </form>
   );
 }
 
@@ -76,12 +57,6 @@ export default function ConfigForm({ cfg, depts }: { cfg: Cfg; depts: Dept[] }) 
         {state?.ok ? <div className="alert good" style={{ marginTop: 14 }}>{state.ok}</div> : null}
         <button className="btn primary" disabled={pending} style={{ marginTop: 8 }}>{pending ? "Saving…" : "Save configuration"}</button>
       </form>
-
-      <div className="section-label" style={{ marginTop: 20 }}>Add a department</div>
-      <AddDepartmentForm />
-      <p className="hint" style={{ marginTop: -2 }}>
-        New departments get SLA settings and can be picked when routing document types right away. They won&apos;t yet appear in the pipeline tracker, vendor-facing document grouping, or a few other dashboards — those still list only the original four.
-      </p>
     </>
   );
 }

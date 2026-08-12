@@ -9,6 +9,7 @@ import {
   DEPT_LABEL, DEPT_ORDER, VSTATUS, VSTATUS_LABEL, VSTATUS_TONE, REVIEW_STATUS, REVIEW_TONE,
 } from "@/lib/constants";
 import { fmtDate, fmtDateTime, fmtMoney } from "@/lib/format";
+import { slaVisual } from "@/lib/sla";
 import { haltVendor, resumeVendor, finalApprove, clearFlag } from "@/app/actions/admin";
 
 export default async function AdminVendor({ params }: { params: Promise<{ id: string }> }) {
@@ -63,7 +64,14 @@ export default async function AdminVendor({ params }: { params: Promise<{ id: st
         {vendor.status === VSTATUS.FLAGGED ? (
           <form action={clearFlag} style={{ marginBottom: 14 }}>
             <input type="hidden" name="vendorId" value={vendor.id} />
-            <button className="btn">Clear flag &amp; return to review</button>
+            {vendor.deptReviews.filter((r) => r.status === "FLAGGED").map((r) => (
+              <label key={r.id} style={{ display: "block", fontSize: 12.5, marginBottom: 6 }}>
+                Extend SLA for {DEPT_LABEL[r.department.key]} by
+                <input type="number" name={`extendDays_${r.departmentId}`} defaultValue={0} min={0} style={{ width: 56, margin: "0 6px" }} />
+                working days
+              </label>
+            ))}
+            <button className="btn" style={{ marginTop: 4 }}>Clear flag(s) &amp; return to review</button>
           </form>
         ) : null}
 
@@ -105,10 +113,26 @@ export default async function AdminVendor({ params }: { params: Promise<{ id: st
             DEPT_ORDER.map((k) => {
               const r = vendor.deptReviews.find((x) => x.department.key === k);
               if (!r) return null;
+              const sla = slaVisual(r.slaStartedAt, r.slaDueAt, r.slaState);
               return (
-                <div key={k} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
-                  <div><b style={{ fontSize: 13 }}>{DEPT_LABEL[k]}</b>{r.comment ? <div className="sub">{r.comment}</div> : null}</div>
-                  <Chip tone={REVIEW_TONE[r.status]}>{r.status.replace(/_/g, " ").toLowerCase()}</Chip>
+                <div key={k} style={{ padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div><b style={{ fontSize: 13 }}>{DEPT_LABEL[k]}</b>{r.comment ? <div className="sub">{r.comment}</div> : null}</div>
+                    <Chip tone={REVIEW_TONE[r.status]}>{r.status.replace(/_/g, " ").toLowerCase()}</Chip>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
+                    <span className="sub" style={{ fontSize: 11 }}>SLA: {r.department.slaDays} working days</span>
+                    <Chip tone={sla.tone}>{sla.label}</Chip>
+                  </div>
+                  <div className="bar-track" style={{ marginTop: 4, height: 5 }}>
+                    <div
+                      className="bar-fill"
+                      style={{
+                        width: `${sla.pct}%`,
+                        background: sla.tone === "warn" ? "var(--warn)" : sla.tone === "bad" ? "var(--bad)" : sla.tone === "neutral" ? "var(--ink-faint)" : "var(--good)",
+                      }}
+                    />
+                  </div>
                 </div>
               );
             })}

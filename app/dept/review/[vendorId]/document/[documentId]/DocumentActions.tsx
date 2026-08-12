@@ -27,15 +27,18 @@ export default function DocumentActions({ documentId, mode }: { documentId: stri
     <form action={action} style={{ marginTop: 18 }}>
       <input type="hidden" name="documentId" value={documentId} />
       <div className="field" style={{ maxWidth: 480 }}>
-        <label>Reason <span className="muted">(required to reject / request changes)</span></label>
-        <textarea name="comment" placeholder="Explain what needs to change before this can be resubmitted…" />
+        <label>Reason <span className="muted">(required to reject / ask for clarification)</span></label>
+        <textarea name="comment" placeholder="Explain the issue, or what you'd like the vendor to clarify…" />
       </div>
+      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, margin: "8px 0" }}>
+        <input type="checkbox" name="needsResubmission" /> Needs resubmission (lets the vendor re-upload — only applies to Ask for clarification)
+      </label>
       {state?.error ? <div className="alert bad">{state.error}</div> : null}
       {state?.ok ? <div className="alert good">{state.ok}</div> : null}
       <div className="btn-row">
         <button className="btn primary" name="intent" value="approve" disabled={pending}>Approve</button>
-        <button className="btn ghost" name="intent" value="changes" disabled={pending}>Request changes</button>
         <button className="btn danger" name="intent" value="reject" disabled={pending}>Reject</button>
+        <button className="btn ghost" name="intent" value="clarify" disabled={pending}>Ask for clarification</button>
       </div>
     </form>
   );

@@ -5,7 +5,8 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/session";
 import { VSTATUS } from "@/lib/constants";
-import { recomputeVendorStatus, notify, audit, getConfig } from "@/lib/workflow";
+import { recomputeVendorStatus, notify, notifyDept, audit, getConfig } from "@/lib/workflow";
+import { resumeDue, addWorkingDays } from "@/lib/sla";
 
 const DOC_FORMATS = ["doc", "pdf", "jpeg"] as const;
 
@@ -61,22 +62,6 @@ export async function setUserActive(formData: FormData) {
   revalidatePath("/admin/access");
 }
 
-export async function swapDeptManagers(formData: FormData) {
-  await requireAdmin();
-  const departmentId = String(formData.get("departmentId") || "");
-  const dept = await prisma.department.findUnique({ where: { id: departmentId } });
-  if (!dept) return;
-  const { primaryManagerId, secondaryManagerId } = dept;
-
-  await prisma.department.update({
-    where: { id: departmentId },
-    data: { primaryManagerId: secondaryManagerId, secondaryManagerId: primaryManagerId },
-  });
-  if (primaryManagerId) await prisma.user.update({ where: { id: primaryManagerId }, data: { managerRole: "SECONDARY" } });
-  if (secondaryManagerId) await prisma.user.update({ where: { id: secondaryManagerId }, data: { managerRole: "PRIMARY" } });
-  revalidatePath("/admin/access");
-}
-
 export async function updateConfig(_prev: unknown, formData: FormData) {
   await requireAdmin();
   await prisma.config.update({
@@ -116,23 +101,6 @@ export async function updateDocType(formData: FormData) {
     },
   });
   revalidatePath("/admin/config");
-}
-
-export async function createDepartment(_prev: unknown, formData: FormData) {
-  const admin = await requireAdmin();
-  const name = String(formData.get("name") || "").trim();
-  const slaDays = Number(formData.get("slaDays") || 5);
-  if (!name) return { error: "Department name is required." };
-  const key = slugifyKey(name);
-  if (!key) return { error: "Enter a valid department name." };
-
-  const existing = await prisma.department.findUnique({ where: { key } });
-  if (existing) return { error: `A department named "${name}" already exists.` };
-
-  await prisma.department.create({ data: { key, name, slaDays } });
-  await audit(admin.id, "CREATE_DEPARTMENT", undefined, key);
-  revalidatePath("/admin/config");
-  return { ok: `Department "${name}" added.` };
 }
 
 export async function createDocumentType(_prev: unknown, formData: FormData) {
@@ -175,44 +143,36 @@ export async function setDocumentTypeActive(formData: FormData) {
   revalidatePath("/admin/config");
 }
 
-export async function createBuyerDocTemplate(_prev: unknown, formData: FormData) {
-  const admin = await requireAdmin();
-  const name = String(formData.get("name") || "").trim();
-  const departmentId = String(formData.get("departmentId") || "");
-  if (!name) return { error: "Document name is required." };
-  if (!departmentId) return { error: "Pick a department to route this document to." };
-
-  const dept = await prisma.department.findUnique({ where: { id: departmentId } });
-  if (!dept) return { error: "Selected department not found." };
-
-  const key = slugifyKey(name);
-  const existing = await prisma.buyerDocTemplate.findUnique({ where: { key } });
-  if (existing) return { error: `A buyer document template named "${name}" already exists.` };
-
-  const maxOrder = await prisma.buyerDocTemplate.aggregate({ _max: { order: true } });
-  await prisma.buyerDocTemplate.create({
-    data: { key, name, departmentKey: dept.key, active: true, order: (maxOrder._max.order ?? 0) + 1 },
-  });
-  await audit(admin.id, "CREATE_BUYER_DOC_TEMPLATE", undefined, key);
-  revalidatePath("/admin/config");
-  revalidatePath("/admin/access");
-  return { ok: `Buyer document template "${name}" added.` };
-}
-
-export async function setBuyerDocTemplateActive(formData: FormData) {
+// Replace the (mocked) default file on a buyer document template. Like every
+// other upload in this app, only filename/size metadata is captured — no
+// file bytes are read or stored.
+export async function replaceBuyerDocTemplateFile(_prev: unknown, formData: FormData) {
   const admin = await requireAdmin();
   const id = String(formData.get("id") || "");
-  const active = String(formData.get("active") || "") === "true";
-  const t = await prisma.buyerDocTemplate.update({ where: { id }, data: { active } });
-  await audit(admin.id, active ? "RESTORE_BUYER_DOC_TEMPLATE" : "REMOVE_BUYER_DOC_TEMPLATE", undefined, t.key);
+  const file = formData.get("file") as File | null;
+  if (!file || !file.name) return { error: "Choose a file to upload." };
+
+  const template = await prisma.buyerDocTemplate.findUnique({ where: { id } });
+  if (!template) return { error: "Unknown document template." };
+
+  await prisma.buyerDocTemplate.update({
+    where: { id },
+    data: {
+      filename: file.name,
+      storedPath: `/templates/${template.key}/${file.name}`,
+      sizeKb: Math.round(file.size / 1024),
+      uploadedAt: new Date(),
+    },
+  });
+  await audit(admin.id, "REPLACE_BUYER_DOC_TEMPLATE_FILE", undefined, template.key);
   revalidatePath("/admin/config");
-  revalidatePath("/admin/access");
+  return { ok: `${template.name} file replaced.` };
 }
 
 export async function haltVendor(formData: FormData) {
   const admin = await requireAdmin();
   const vendorId = String(formData.get("vendorId") || "");
-  const reason = String(formData.get("reason") || "").trim() || "Halted by admin.";
+  const reason = String(formData.get("reason") || "").trim() || "Onboarding paused by admin.";
   await prisma.vendor.update({ where: { id: vendorId }, data: { status: VSTATUS.HALTED, haltReason: reason } });
   await audit(admin.id, "HALT", vendorId, reason);
   await notifyVendorAccount(vendorId, `Your onboarding has been halted: ${reason}`);
@@ -233,15 +193,35 @@ export async function resumeVendor(formData: FormData) {
 export async function clearFlag(formData: FormData) {
   const admin = await requireAdmin();
   const vendorId = String(formData.get("vendorId") || "");
-  await prisma.deptReview.updateMany({
+
+  const flagged = await prisma.deptReview.findMany({
     where: { vendorId, status: "FLAGGED" },
-    data: { status: "PENDING", slaState: "RUNNING" },
+    include: { department: true, vendor: true },
   });
+
+  for (const r of flagged) {
+    const extendDays = Math.max(0, Number(formData.get(`extendDays_${r.departmentId}`) || 0));
+    let newDue = r.slaDueAt;
+    if (newDue && r.slaPausedAt) newDue = resumeDue(newDue, r.slaPausedAt);
+    if (newDue && extendDays > 0) newDue = addWorkingDays(newDue, extendDays);
+
+    await prisma.deptReview.update({
+      where: { id: r.id },
+      data: { status: "PENDING", slaState: "RUNNING", slaPausedAt: null, slaDueAt: newDue },
+    });
+    await notifyDept(
+      r.departmentId,
+      `The flag on "${r.vendor.name}" has been cleared${extendDays > 0 ? ` — SLA extended by ${extendDays} working day(s)` : ""}. Review has resumed.`,
+      vendorId
+    );
+  }
+
   await prisma.vendor.update({ where: { id: vendorId }, data: { status: VSTATUS.IN_REVIEW } });
   await recomputeVendorStatus(vendorId);
   await audit(admin.id, "CLEAR_FLAG", vendorId);
   revalidatePath(`/admin/vendors/${vendorId}`);
   revalidatePath("/admin");
+  revalidatePath("/dept");
 }
 
 export async function finalApprove(formData: FormData) {

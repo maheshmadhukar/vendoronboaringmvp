@@ -3,7 +3,7 @@ import { Chip } from "@/app/components/ui";
 import { requireAdmin } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { ROLE, DEPT_LABEL, DEPT_ORDER } from "@/lib/constants";
-import { setUserActive, swapDeptManagers } from "@/app/actions/admin";
+import { setUserActive } from "@/app/actions/admin";
 import InviteVendorForm from "./InviteVendorForm";
 import WorkdayFetchBox from "./WorkdayFetchBox";
 
@@ -11,7 +11,6 @@ export default async function AccessPage() {
   await requireAdmin();
   const users = await prisma.user.findMany({ include: { department: true }, orderBy: [{ role: "asc" }, { name: "asc" }] });
   const depts = await prisma.department.findMany({ include: { users: true }, orderBy: { name: "asc" } });
-  const invites = await prisma.invite.findMany({ where: { consumedAt: null }, orderBy: { createdAt: "desc" }, take: 10 });
   const buyerDocTemplates = await prisma.buyerDocTemplate.findMany({ where: { active: true }, orderBy: { order: "asc" } });
 
   const internal = users.filter((u) => u.role !== ROLE.VENDOR);
@@ -29,17 +28,30 @@ export default async function AccessPage() {
         <InviteVendorForm templates={buyerDocTemplates.map((t) => ({ id: t.id, name: t.name }))} />
       </div>
 
-      {invites.length > 0 ? (
-        <div className="card card-pad" style={{ marginTop: 18 }}>
-          <div className="section-label">Open invites</div>
-          {invites.map((i) => (
-            <div className="notif" key={i.id}>
-              <span>{i.email}</span>
-              <a className="row-link" href={`/invite/${i.token}`}>/invite/{i.token.slice(0, 12)}…</a>
-            </div>
-          ))}
+      <div className="card" style={{ marginTop: 18 }}>
+        <div className="card-pad" style={{ paddingBottom: 0 }}><div className="section-label">Department managers</div></div>
+        <div className="table-wrap">
+          <table className="table">
+            <thead><tr><th>Department</th><th>Manager</th></tr></thead>
+            <tbody>
+              {DEPT_ORDER.map((k) => {
+                const d = depts.find((x) => x.key === k);
+                if (!d) return null;
+                const manager = d.users.find((u) => u.id === d.managerId);
+                return (
+                  <tr key={k}>
+                    <td className="strong">{DEPT_LABEL[k]}</td>
+                    <td>
+                      {manager?.name ?? "—"}
+                      <WorkdayFetchBox />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
-      ) : null}
+      </div>
 
       <div className="card" style={{ marginTop: 18 }}>
         <div className="card-pad" style={{ paddingBottom: 0 }}><div className="section-label">Internal users</div></div>
@@ -50,7 +62,7 @@ export default async function AccessPage() {
               {internal.map((u) => (
                 <tr key={u.id}>
                   <td><div className="strong">{u.name}</div><div className="sub">{u.email}</div></td>
-                  <td>{u.role === ROLE.ADMIN ? "Admin" : "Dept user"}{u.managerRole ? ` · ${u.managerRole.toLowerCase()}` : ""}</td>
+                  <td>{u.role === ROLE.ADMIN ? "Admin" : "Dept user"}</td>
                   <td>{u.department ? DEPT_LABEL[u.department.key] : "—"}</td>
                   <td>{u.active ? <Chip tone="good">active</Chip> : <Chip tone="neutral">revoked</Chip>}</td>
                   <td>
@@ -64,42 +76,6 @@ export default async function AccessPage() {
                   </td>
                 </tr>
               ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div className="card" style={{ marginTop: 18 }}>
-        <div className="card-pad" style={{ paddingBottom: 0 }}><div className="section-label">Department managers</div></div>
-        <div className="table-wrap">
-          <table className="table">
-            <thead><tr><th>Department</th><th>Primary</th><th>Swap</th><th>Secondary</th></tr></thead>
-            <tbody>
-              {DEPT_ORDER.map((k) => {
-                const d = depts.find((x) => x.key === k);
-                if (!d) return null;
-                const primary = d.users.find((u) => u.id === d.primaryManagerId);
-                const secondary = d.users.find((u) => u.id === d.secondaryManagerId);
-                return (
-                  <tr key={k}>
-                    <td className="strong">{DEPT_LABEL[k]}</td>
-                    <td>
-                      {primary?.name ?? "—"}
-                      <WorkdayFetchBox />
-                    </td>
-                    <td>
-                      <form action={swapDeptManagers}>
-                        <input type="hidden" name="departmentId" value={d.id} />
-                        <button className="btn sm" disabled={!primary && !secondary}>⇄ Swap</button>
-                      </form>
-                    </td>
-                    <td>
-                      {secondary?.name ?? "—"}
-                      <WorkdayFetchBox />
-                    </td>
-                  </tr>
-                );
-              })}
             </tbody>
           </table>
         </div>

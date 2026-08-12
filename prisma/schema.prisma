@@ -18,8 +18,7 @@ model Department {
   key                String   @unique // HR | LEGAL | FINANCE | PROCUREMENT
   name               String
   slaDays            Int      @default(5)
-  primaryManagerId   String?
-  secondaryManagerId String?
+  managerId          String?
   users              User[]   @relation("DeptMembers")
   reviews            DeptReview[]
   createdAt          DateTime @default(now())
@@ -31,7 +30,6 @@ model User {
   name         String
   passwordHash String?
   role         String   // ADMIN | DEPT | VENDOR
-  managerRole  String?  // PRIMARY | SECONDARY | null (for DEPT users)
   active       Boolean  @default(true)
   departmentId String?
   department   Department? @relation("DeptMembers", fields: [departmentId], references: [id])
@@ -143,6 +141,7 @@ model DeptReview {
   pausedMs     Int      @default(0)
   slaState     String   @default("PENDING") // PENDING | RUNNING | PAUSED | MET | BREACHED
   everBreached Boolean  @default(false) // sticky: true once this review has ever missed its SLA, even after it later resolves
+  slaReminderSentAt DateTime? // set once an amber-zone reminder has been sent to the dept manager, to avoid re-notifying
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -192,6 +191,10 @@ model BuyerDocTemplate {
   active        Boolean  @default(true)
   order         Int      @default(0)
   createdAt     DateTime @default(now())
+  filename      String?
+  storedPath    String?
+  sizeKb        Int?
+  uploadedAt    DateTime?
   vendorDocs    VendorBuyerDoc[]
 }
 

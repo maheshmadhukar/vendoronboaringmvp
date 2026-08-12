@@ -48,28 +48,18 @@ async function main() {
     data: { email: "admin@buyer.com", name: "Aarti Nair", role: "ADMIN", passwordHash: hash },
   });
 
-  // Dept managers (primary + secondary)
+  // Dept managers — one per department (Procurement has no standalone login;
+  // Admin acts as the Procurement reviewer — see lib/session.ts requireDept).
   const mgr = [
-    { dept: "FINANCE", email: "finance.mgr@buyer.com", name: "Neha Iyer", role: "PRIMARY" },
-    { dept: "FINANCE", email: "finance.mgr2@buyer.com", name: "Sanjay Rao", role: "SECONDARY" },
-    { dept: "LEGAL", email: "legal.mgr@buyer.com", name: "Priya Sharma", role: "PRIMARY" },
-    { dept: "LEGAL", email: "legal.mgr2@buyer.com", name: "Imran Qureshi", role: "SECONDARY" },
-    { dept: "HR", email: "hr.mgr@buyer.com", name: "Divya Menon", role: "PRIMARY" },
-    { dept: "HR", email: "hr.mgr2@buyer.com", name: "Rahul Nanda", role: "SECONDARY" },
-    { dept: "PROCUREMENT", email: "proc.mgr@buyer.com", name: "Rohan Mehta", role: "PRIMARY" },
-    { dept: "PROCUREMENT", email: "proc.mgr2@buyer.com", name: "Kavya Pillai", role: "SECONDARY" },
+    { dept: "FINANCE", email: "adminfinance@buyer.com", name: "Neha Iyer" },
+    { dept: "LEGAL", email: "adminlegal@buyer.com", name: "Priya Sharma" },
+    { dept: "HR", email: "adminhr@buyer.com", name: "Divya Menon" },
   ];
   for (const m of mgr) {
     const u = await prisma.user.create({
-      data: {
-        email: m.email, name: m.name, role: "DEPT", managerRole: m.role,
-        passwordHash: hash, departmentId: depts[m.dept],
-      },
+      data: { email: m.email, name: m.name, role: "DEPT", passwordHash: hash, departmentId: depts[m.dept] },
     });
-    await prisma.department.update({
-      where: { id: depts[m.dept] },
-      data: m.role === "PRIMARY" ? { primaryManagerId: u.id } : { secondaryManagerId: u.id },
-    });
+    await prisma.department.update({ where: { id: depts[m.dept] }, data: { managerId: u.id } });
   }
 
   // Document types (routing per approved mapping)
@@ -103,14 +93,17 @@ async function main() {
 
   // Buyer document templates (sent to vendors at invite time, read-only on their side)
   const buyerDocDefs = [
-    { key: "MSA", name: "Master Service Agreement (MSA)", dept: "LEGAL" },
-    { key: "NDA", name: "Non-Disclosure Agreement (NDA)", dept: "LEGAL" },
+    { key: "MSA", name: "Master Service Agreement (MSA)", dept: "LEGAL", filename: "MSA_Template_v1.pdf", sizeKb: 184 },
+    { key: "NDA", name: "Non-Disclosure Agreement (NDA)", dept: "LEGAL", filename: "NDA_Template_v1.pdf", sizeKb: 96 },
   ];
   const buyerDocTemplates: Record<string, string> = {};
   let buyerDocOrder = 0;
   for (const d of buyerDocDefs) {
     const rec = await prisma.buyerDocTemplate.create({
-      data: { key: d.key, name: d.name, departmentKey: d.dept, active: true, order: buyerDocOrder++ },
+      data: {
+        key: d.key, name: d.name, departmentKey: d.dept, active: true, order: buyerDocOrder++,
+        filename: d.filename, storedPath: `/templates/${d.key}/${d.filename}`, sizeKb: d.sizeKb, uploadedAt: daysAgo(30),
+      },
     });
     buyerDocTemplates[d.key] = rec.id;
   }
@@ -129,7 +122,7 @@ async function main() {
     docOverrides?: Record<string, string>;
     createdByProc?: boolean;
   }) {
-    const proc = await prisma.user.findUnique({ where: { email: "proc.mgr@buyer.com" } });
+    const proc = await prisma.user.findUnique({ where: { email: "admin@buyer.com" } });
     const submittedAt = opts.submittedDaysAgo != null ? daysAgo(opts.submittedDaysAgo) : null;
     const vendor = await prisma.vendor.create({
       data: {
@@ -225,6 +218,12 @@ async function main() {
     reviews: { PROCUREMENT: { status: "PENDING" }, FINANCE: { status: "PENDING" }, LEGAL: { status: "PENDING" }, HR: { status: "PENDING" } },
   });
 
+  // Demo: force Northline's Legal review due today, to show the "due today" SLA color.
+  await prisma.deptReview.update({
+    where: { vendorId_departmentId: { vendorId: northline.id, departmentId: depts["LEGAL"] } },
+    data: { slaStartedAt: daysAgo(3), slaDueAt: new Date(), slaState: "RUNNING" },
+  });
+
   // Attach the buyer's MSA + NDA templates to a couple of vendors, as if sent at invite time.
   // Northline has signed both (demo "Done" state); Anugrah hasn't signed either yet (demo "In progress" state).
   for (const templateId of Object.values(buyerDocTemplates)) {
@@ -251,7 +250,7 @@ async function main() {
   });
 
   // Kestrel — flagged to admin
-  await makeVendor({
+  const kestrel = await makeVendor({
     name: "Kestrel Staffing Partners",
     email: "hello@kestrelstaffing.in",
     withAccount: false,
@@ -264,6 +263,12 @@ async function main() {
       FINANCE: { status: "FLAGGED", comment: "Turnover figures look inconsistent — flagged for admin audit." },
       LEGAL: { status: "PENDING" }, HR: { status: "PENDING" },
     },
+  });
+
+  // Demo: Kestrel's HR review nearing SLA (documents submitted, none reviewed yet).
+  await prisma.deptReview.update({
+    where: { vendorId_departmentId: { vendorId: kestrel.id, departmentId: depts["HR"] } },
+    data: { slaStartedAt: daysAgo(3), slaDueAt: new Date(Date.now() + 2 * 86400000), slaState: "RUNNING" },
   });
 
   // Sterling & Orbit — onboarded (analytics)
@@ -286,7 +291,7 @@ async function main() {
     createdByProc: true, status: "INVITED",
   });
   const inviteToken = "demo-invite-meridian";
-  const proc = await prisma.user.findUnique({ where: { email: "proc.mgr@buyer.com" } });
+  const proc = await prisma.user.findUnique({ where: { email: "admin@buyer.com" } });
   await prisma.invite.create({
     data: {
       email: "contact@meridianpack.in", token: inviteToken, vendorId: meridian.id,
@@ -300,7 +305,7 @@ async function main() {
     await prisma.notification.create({
       data: { userId: karan.id, message: "Finance requested changes to your Bank Statement. Please resubmit with a comment.", kind: "STATUS", vendorId: meridian.id },
     });
-  const financeMgr = await prisma.user.findUnique({ where: { email: "finance.mgr@buyer.com" } });
+  const financeMgr = await prisma.user.findUnique({ where: { email: "adminfinance@buyer.com" } });
   if (financeMgr)
     await prisma.notification.create({
       data: { userId: financeMgr.id, message: "New vendor 'Northline Steel Components' is awaiting your Finance review.", kind: "TASK" },
@@ -309,11 +314,11 @@ async function main() {
   console.log("\n✅ Seed complete.");
   console.log("Login (password: demo1234):");
   console.log("  Admin           admin@buyer.com");
-  console.log("  Finance mgr     finance.mgr@buyer.com");
-  console.log("  Legal mgr       legal.mgr@buyer.com");
-  console.log("  HR mgr          hr.mgr@buyer.com");
-  console.log("  Procurement mgr proc.mgr@buyer.com");
+  console.log("  Finance mgr     adminfinance@buyer.com");
+  console.log("  Legal mgr       adminlegal@buyer.com");
+  console.log("  HR mgr          adminhr@buyer.com");
   console.log("  Vendor          karan@anugrahfreight.in");
+  console.log("  (Procurement has no login — sign in as Admin and use the Procurement Review nav link)");
   console.log(`\nInvite/OTP signup demo: /invite/${inviteToken}\n`);
 }
 

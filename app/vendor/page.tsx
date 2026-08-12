@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Shell from "@/app/components/Shell";
-import { Chip, Tracker, Alert, Empty } from "@/app/components/ui";
+import { Chip, Tracker, Alert } from "@/app/components/ui";
 import { requireVendor } from "@/lib/session";
 import { getVendorFull } from "@/lib/vendor";
 import { pipelineStage } from "@/lib/workflow";
@@ -10,10 +10,8 @@ import {
 } from "@/lib/constants";
 import { fmtDate, fmtDateTime } from "@/lib/format";
 import { slaVisual } from "@/lib/sla";
-
-const docTone: Record<string, string> = {
-  PENDING: "neutral", SUBMITTED: "info", APPROVED: "good", REJECTED: "bad", CHANGES_REQUESTED: "warn",
-};
+import ReplyForm from "./ReplyForm";
+import DocUploadRow from "./documents/DocUploadRow";
 
 export default async function VendorOverview() {
   const user = await requireVendor();
@@ -22,6 +20,7 @@ export default async function VendorOverview() {
 
   const preSubmit = vendor.status === VSTATUS.DRAFT || vendor.status === VSTATUS.INVITED;
   const flaggedDocs = vendor.documents.filter((d) => d.status === DOC_STATUS.CHANGES_REQUESTED);
+  const uploadEditable = vendor.status !== VSTATUS.HALTED;
 
   return (
     <Shell active="overview" title="Onboarding Overview">
@@ -52,26 +51,27 @@ export default async function VendorOverview() {
         </div>
       ) : null}
 
-      <div className="card card-pad" style={{ marginTop: 18 }}>
-        <div className="section-label">Document status</div>
-        {flaggedDocs.length === 0 ? (
-          <Empty title="Nothing needs your attention" hint="All submitted documents are in good standing." />
-        ) : (
-          <div>
-            {flaggedDocs.map((d) => (
-              <div className="doc-row" key={d.id}>
-                <div className="doc-ico" />
-                <div className="doc-info">
-                  <div className="doc-name">{d.documentType.name}</div>
-                  <div className="doc-meta">{DEPT_LABEL[d.documentType.departmentKey]} · {d.filename ?? "not uploaded"}</div>
-                  {d.reviewNote ? <div className="doc-flag">{d.reviewNote}</div> : null}
-                </div>
-                <Chip tone={docTone[d.status] ?? "neutral"}>{d.status.replace(/_/g, " ").toLowerCase()}</Chip>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      {flaggedDocs.length > 0 ? (
+        <div className="card card-pad" style={{ marginTop: 18 }}>
+          <div className="section-label">Documents that require attention</div>
+          {flaggedDocs.map((d) => (
+            <DocUploadRow
+              key={d.id}
+              doc={{
+                id: d.documentTypeId,
+                name: d.documentType.name,
+                accepted: d.documentType.acceptedFormats,
+                maxMb: d.documentType.maxSizeMb,
+                helper: d.documentType.helperText,
+                dept: DEPT_LABEL[d.documentType.departmentKey],
+              }}
+              current={{ filename: d.filename, status: d.status, reviewNote: d.reviewNote }}
+              editable={uploadEditable}
+              comments={vendor.comments.filter((c) => c.documentId === d.id)}
+            />
+          ))}
+        </div>
+      ) : null}
 
       <div className="card card-pad" style={{ marginTop: 18 }}>
         <div className="section-label">Department review status</div>
@@ -126,6 +126,7 @@ export default async function VendorOverview() {
               <div className="body">{c.body}</div>
             </div>
           ))}
+          <ReplyForm departmentId={vendor.comments[vendor.comments.length - 1].departmentId} />
         </div>
       ) : null}
     </Shell>

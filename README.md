@@ -26,13 +26,14 @@ To reset demo data at any time: `npm run db:setup`.
 | Role | Email |
 |---|---|
 | Admin | `admin@buyer.com` |
-| Finance Dept Manager | `finance.mgr@buyer.com` |
-| Legal Dept Manager | `legal.mgr@buyer.com` |
-| HR Dept Manager | `hr.mgr@buyer.com` |
-| Procurement Dept Manager | `proc.mgr@buyer.com` |
+| Finance Dept Manager | `adminfinance@buyer.com` |
+| Legal Dept Manager | `adminlegal@buyer.com` |
+| HR Dept Manager | `adminhr@buyer.com` |
 | Vendor (Anugrah Freight) | `karan@anugrahfreight.in` |
 
-Each department also has a secondary manager (`*.mgr2@buyer.com`).
+Each department has exactly one manager account. Procurement has no
+standalone login — sign in as **Admin**, whose sidebar has a **Procurement
+Review** link that reviews Procurement's routed documents.
 
 **Invite / OTP signup demo:** open `/invite/demo-invite-meridian` (the OTP is
 shown on the verify screen, since email is simulated).
@@ -40,9 +41,11 @@ shown on the verify screen, since email is simulated).
 ## What to try
 
 - **Vendor** (Anugrah): see dept-wise + doc-wise status; Finance requested a change
-  → re-upload in **Documents** and **resubmit with a comment** on the Overview.
-- **Finance manager**: review queue → open a vendor → Approve / Request changes /
-  Reject (comment required) / Flag to admin. You only see **Finance** documents and
+  → re-upload in **Documents**. Also try the **reply box** under Clarification
+  history on the Overview page after a department asks for clarification.
+- **Finance manager**: review queue → open a vendor → per document, **Approve /
+  Reject / Ask for clarification** (comment required for reject/clarify), plus
+  **Flag to admin** at the vendor level. You only see **Finance** documents and
   cannot open another department's flow.
 - **Admin**: Status Dashboard (flagged + final-approval queue), **Access & Invites**
   (invite a vendor, grant/revoke access, assign managers), **Configuration**
@@ -53,11 +56,13 @@ shown on the verify screen, since email is simulated).
 
 - **Admin** (buyer): configuration, access management, SLA/triggers, halt onboarding,
   final approval, analytics.
-- **Buyer Dept User** (HR / Legal / Finance / Procurement): reviews only their own
-  department's routed documents; read-only on vendor data; Approve / Reject /
-  Request changes / Flag-to-admin.
+- **Buyer Dept User** (HR / Legal / Finance): reviews only their own
+  department's routed documents; read-only on vendor data; per document,
+  Approve / Reject / Ask for clarification, plus Flag-to-admin at the vendor
+  level. Procurement has no dept login — Admin acts as its reviewer from the
+  **Procurement Review** sidebar link.
 - **Vendor**: invite-only signup, onboarding form, document upload (all in one go),
-  real-time status, resubmit with clarification.
+  real-time status, and a reply box on any clarification a department asks for.
 
 RBAC is enforced server-side in every page and Server Action via
 `requireRole` / `requireDept` (route) and per-caller query scoping (data). Any

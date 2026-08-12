@@ -16,6 +16,18 @@ export default async function DocumentsPage() {
   const docs = await prisma.document.findMany({ where: { vendorId: vendor.id } });
   const byType = new Map(docs.map((d) => [d.documentTypeId, d]));
 
+  const comments = await prisma.comment.findMany({
+    where: { vendorId: vendor.id, documentId: { not: null } },
+    include: { author: true },
+    orderBy: { createdAt: "asc" },
+  });
+  const commentsByDoc = new Map<string, typeof comments>();
+  for (const c of comments) {
+    const key = c.documentId!;
+    if (!commentsByDoc.has(key)) commentsByDoc.set(key, []);
+    commentsByDoc.get(key)!.push(c);
+  }
+
   const editable =
     vendor.status === VSTATUS.DRAFT ||
     vendor.status === VSTATUS.INVITED ||
@@ -61,6 +73,7 @@ export default async function DocumentsPage() {
                 doc={{ id: t.id, name: t.name, accepted: t.acceptedFormats, maxMb: t.maxSizeMb, helper: t.helperText, dept: DEPT_LABEL[g.key] }}
                 current={cur ? { filename: cur.filename, status: cur.status, reviewNote: cur.reviewNote } : null}
                 editable={rowEditable}
+                comments={cur ? commentsByDoc.get(cur.id) ?? [] : []}
               />
             );
           })}

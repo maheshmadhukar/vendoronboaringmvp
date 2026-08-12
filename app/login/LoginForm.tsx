@@ -2,15 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { loginAction } from "@/app/actions/auth";
-
-const DEMO = [
-  { label: "Admin", email: "admin@buyer.com" },
-  { label: "Finance Mgr", email: "finance.mgr@buyer.com" },
-  { label: "Legal Mgr", email: "legal.mgr@buyer.com" },
-  { label: "HR Mgr", email: "hr.mgr@buyer.com" },
-  { label: "Procurement Mgr", email: "proc.mgr@buyer.com" },
-  { label: "Vendor (Anugrah)", email: "karan@anugrahfreight.in" },
-];
+import { DEMO_PERSONAS } from "@/lib/constants";
 
 export default function LoginForm() {
   const [state, action, pending] = useActionState(loginAction, null as { error?: string } | null);
@@ -36,7 +28,7 @@ export default function LoginForm() {
 
       <div className="demo-box">
         <div className="dl">Demo accounts · password: <code>demo1234</code></div>
-        {DEMO.map((d) => (
+        {DEMO_PERSONAS.map((d) => (
           <div className="demo-row" key={d.email}>
             <code>{d.email}</code>
             <button

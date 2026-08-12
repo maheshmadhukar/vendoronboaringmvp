@@ -58,30 +58,6 @@ export async function approveDocument(_prev: unknown, formData: FormData) {
   return { ok: "Document approved." };
 }
 
-export async function requestDocumentChanges(_prev: unknown, formData: FormData) {
-  const documentId = String(formData.get("documentId") || "");
-  const comment = String(formData.get("comment") || "").trim();
-  if (!comment) return { error: "A comment is required to request changes." };
-  const { user, document } = await ownDocument(documentId);
-  if (document.vendor.status === VSTATUS.HALTED) return { error: "Onboarding is halted by admin." };
-
-  await prisma.document.update({
-    where: { id: documentId },
-    data: { status: DOC_STATUS.CHANGES_REQUESTED, reviewNote: comment },
-  });
-  await prisma.comment.create({
-    data: { vendorId: document.vendorId, departmentId: user.departmentId, documentId, authorId: user.id, body: comment, kind: "CLARIFICATION" },
-  });
-  await audit(user.id, `REQUEST_CHANGES_DOCUMENT`, document.vendorId, comment);
-  await notifyVendorAccount(document.vendorId, `${user.department!.name} requested changes on "${document.documentType.name}": ${comment}`);
-  await touchReviewMeta(document.vendorId, user.departmentId!, user.id, comment);
-  await recomputeDeptReviewStatus(document.vendorId, user.departmentId!);
-  revalidatePath(`/dept/review/${document.vendorId}`);
-  revalidatePath(`/dept/review/${document.vendorId}/document/${documentId}`);
-  revalidatePath("/dept");
-  return { ok: "Change request sent to vendor." };
-}
-
 export async function rejectDocument(_prev: unknown, formData: FormData) {
   const documentId = String(formData.get("documentId") || "");
   const comment = String(formData.get("comment") || "").trim();
@@ -98,6 +74,10 @@ export async function rejectDocument(_prev: unknown, formData: FormData) {
   });
   await audit(user.id, `REJECT_DOCUMENT`, document.vendorId, comment);
   await notifyVendorAccount(document.vendorId, `${user.department!.name} rejected "${document.documentType.name}": ${comment}`);
+  // Rejecting a document rolls the whole vendor up to the terminal REJECTED
+  // status (see recomputeVendorStatus) — Admin should know without having
+  // to be separately flagged for it.
+  await notifyAdmins(`${user.department!.name} rejected "${document.documentType.name}" for "${document.vendor.name}": ${comment}`, document.vendorId);
   await touchReviewMeta(document.vendorId, user.departmentId!, user.id, comment);
   await recomputeDeptReviewStatus(document.vendorId, user.departmentId!);
   revalidatePath(`/dept/review/${document.vendorId}`);
@@ -106,22 +86,44 @@ export async function rejectDocument(_prev: unknown, formData: FormData) {
   return { ok: "Document rejected." };
 }
 
-/** Lightweight, non-blocking question tied to a document — no status change, no SLA impact. */
+/**
+ * A question tied to a document. Plain (unchecked "needs resubmission"): no
+ * status change, no SLA impact — just a comment + notification. With
+ * "needs resubmission" checked: also puts the document into
+ * CHANGES_REQUESTED so the vendor can re-upload it (this is what used to be
+ * a separate "Request changes" action — folded in here so certificate docs
+ * keep just 3 buttons: Approve / Reject / Ask for clarification).
+ */
 export async function clarifyDocument(_prev: unknown, formData: FormData) {
   const documentId = String(formData.get("documentId") || "");
   const comment = String(formData.get("comment") || "").trim();
   if (!comment) return { error: "Describe what you'd like clarified." };
+  const needsResubmission = formData.get("needsResubmission") === "on";
   const { user, document } = await ownDocument(documentId);
+  if (needsResubmission && document.vendor.status === VSTATUS.HALTED) return { error: "Onboarding is halted by admin." };
 
+  if (needsResubmission) {
+    await prisma.document.update({
+      where: { id: documentId },
+      data: { status: DOC_STATUS.CHANGES_REQUESTED, reviewNote: comment },
+    });
+  }
   await prisma.comment.create({
-    data: { vendorId: document.vendorId, departmentId: user.departmentId, documentId, authorId: user.id, body: comment, kind: "QUESTION" },
+    data: { vendorId: document.vendorId, departmentId: user.departmentId, documentId, authorId: user.id, body: comment, kind: needsResubmission ? "CLARIFICATION" : "QUESTION" },
   });
-  await audit(user.id, `CLARIFY_DOCUMENT`, document.vendorId, comment);
-  await notifyVendorAccount(document.vendorId, `${user.department!.name} asked a question about "${document.documentType.name}": ${comment}`);
+  await audit(user.id, needsResubmission ? "REQUEST_CHANGES_DOCUMENT" : "CLARIFY_DOCUMENT", document.vendorId, comment);
+  await notifyVendorAccount(
+    document.vendorId,
+    `${user.department!.name} ${needsResubmission ? "requested changes on" : "asked a question about"} "${document.documentType.name}": ${comment}`
+  );
+  if (needsResubmission) {
+    await touchReviewMeta(document.vendorId, user.departmentId!, user.id, comment);
+    await recomputeDeptReviewStatus(document.vendorId, user.departmentId!);
+  }
   revalidatePath(`/dept/review/${document.vendorId}`);
   revalidatePath(`/dept/review/${document.vendorId}/document/${documentId}`);
   revalidatePath("/dept");
-  return { ok: "Question sent to vendor." };
+  return { ok: needsResubmission ? "Change request sent to vendor." : "Question sent to vendor." };
 }
 
 /** A plain remark on a document's comment thread — no status change, no vendor question implied. */
@@ -145,7 +147,6 @@ export async function documentReviewAction(prev: unknown, formData: FormData) {
   const intent = String(formData.get("intent") || "");
   switch (intent) {
     case "approve": return approveDocument(prev, formData);
-    case "changes": return requestDocumentChanges(prev, formData);
     case "reject": return rejectDocument(prev, formData);
     case "clarify": return clarifyDocument(prev, formData);
     case "comment": return addDocumentComment(prev, formData);
@@ -159,8 +160,15 @@ export async function flagVendor(_prev: unknown, formData: FormData) {
   if (!comment) return { error: "Describe the issue you're flagging." };
   const { user, review } = await ownReview(vendorId);
   const everBreached = review.everBreached || isBreached(review.slaDueAt, review.slaState);
+  const wasRunning = review.slaState === "RUNNING";
 
-  await prisma.deptReview.update({ where: { id: review.id }, data: { status: REVIEW_STATUS.FLAGGED, decidedById: user.id, comment, everBreached } });
+  await prisma.deptReview.update({
+    where: { id: review.id },
+    data: {
+      status: REVIEW_STATUS.FLAGGED, decidedById: user.id, comment, everBreached,
+      ...(wasRunning ? { slaState: "PAUSED", slaPausedAt: new Date() } : {}),
+    },
+  });
   await prisma.vendor.update({ where: { id: vendorId }, data: { status: VSTATUS.FLAGGED } });
   await prisma.comment.create({ data: { vendorId, departmentId: user.departmentId, authorId: user.id, body: comment, kind: "FLAG" } });
   await audit(user.id, `FLAG_${review.department.key}`, vendorId, comment);

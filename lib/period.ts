@@ -90,3 +90,20 @@ export function inRange(date: Date | null | undefined, from: Date, to: Date): bo
   const t = date.getTime();
   return t >= from.getTime() && t <= to.getTime();
 }
+
+// Rolling trailing-window filter for the Status Dashboard (distinct from the
+// calendar-aligned quarter/year period above, used by Analytics).
+export type DashboardRangeMode = "30d" | "90d" | "6m" | "1y";
+
+const DASHBOARD_RANGE_DAYS: Record<DashboardRangeMode, number> = {
+  "30d": 30, "90d": 90, "6m": 182, "1y": 365,
+};
+
+export const DASHBOARD_RANGE_LABEL: Record<DashboardRangeMode, string> = {
+  "30d": "Last 30 days", "90d": "Last 90 days", "6m": "Last 6 months", "1y": "Last 1 year",
+};
+
+export function resolveDashboardRange(mode?: string): { mode: DashboardRangeMode; from: Date } {
+  const m: DashboardRangeMode = mode === "30d" || mode === "6m" || mode === "1y" ? mode : "90d";
+  return { mode: m, from: new Date(Date.now() - DASHBOARD_RANGE_DAYS[m] * 86400000) };
+}

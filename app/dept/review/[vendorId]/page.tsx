@@ -6,9 +6,10 @@ import { requireDept } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { pipelineStage } from "@/lib/workflow";
 import {
-  DEPT_LABEL, DEPT_ORDER, REVIEW_STATUS, REVIEW_TONE, VSTATUS, VSTATUS_LABEL, VSTATUS_TONE,
+  DEPT_LABEL, DEPT_ORDER, REVIEW_STATUS, REVIEW_TONE, ROLE, VSTATUS, VSTATUS_LABEL, VSTATUS_TONE,
 } from "@/lib/constants";
 import { fmtDate, fmtDateTime, fmtMoney } from "@/lib/format";
+import { slaVisual } from "@/lib/sla";
 import { getBuyerCoveredKeys } from "@/lib/vendor";
 import ReviewActions from "./ReviewActions";
 import DocumentReviewRow from "./DocumentReviewRow";
@@ -50,10 +51,11 @@ export default async function ReviewPage({ params }: { params: Promise<{ vendorI
     review.status !== REVIEW_STATUS.FLAGGED &&
     ![VSTATUS.ONBOARDED, VSTATUS.REJECTED].includes(vendor.status as never);
   const halted = vendor.status === VSTATUS.HALTED;
+  const sla = slaVisual(review.slaStartedAt, review.slaDueAt, review.slaState);
 
   return (
     <Shell
-      active="queue"
+      active={user.role === ROLE.ADMIN ? "procurement" : "queue"}
       title={`Review — ${vendor.name}`}
       crumbs={<><Link href="/dept">Review Queue</Link><span className="crumb-sep">/</span>{vendor.name}</>}
     >
@@ -117,6 +119,19 @@ export default async function ReviewPage({ params }: { params: Promise<{ vendorI
             <div style={{ marginBottom: 14 }}>
               <Chip tone={REVIEW_TONE[review.status]}>{review.status.replace(/_/g, " ").toLowerCase()}</Chip>
               {review.comment ? <p className="muted" style={{ fontSize: 13, marginTop: 8 }}>{review.comment}</p> : null}
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+              <span className="sub" style={{ fontSize: 11 }}>SLA</span>
+              <Chip tone={sla.tone}>{sla.label}</Chip>
+            </div>
+            <div className="bar-track" style={{ height: 5, marginBottom: 14 }}>
+              <div
+                className="bar-fill"
+                style={{
+                  width: `${sla.pct}%`,
+                  background: sla.tone === "warn" ? "var(--warn)" : sla.tone === "bad" ? "var(--bad)" : sla.tone === "neutral" ? "var(--ink-faint)" : "var(--good)",
+                }}
+              />
             </div>
             {canFlag ? <ReviewActions vendorId={vendor.id} disabled={halted} /> : (
               <p className="muted" style={{ fontSize: 13 }}>No further actions available for this vendor&apos;s current state.</p>

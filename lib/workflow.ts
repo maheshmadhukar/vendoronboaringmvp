@@ -1,6 +1,6 @@
 import { prisma } from "./prisma";
-import { VSTATUS, REVIEW_STATUS, SLA_STATE, DOC_STATUS, ROLE } from "./constants";
-import { computeDueAt, isBreached } from "./sla";
+import { VSTATUS, REVIEW_STATUS, SLA_STATE, DOC_STATUS, ROLE, DEPT_LABEL } from "./constants";
+import { computeDueAt, isBreached, daysLeft } from "./sla";
 import { getBuyerCoveredKeys } from "./vendor";
 
 export async function getConfig() {
@@ -20,7 +20,18 @@ export async function notify(
   });
 }
 
-/** Notify every active user in a department (managers + members). */
+export async function notifyAdmins(message: string, vendorId?: string) {
+  const admins = await prisma.user.findMany({
+    where: { role: ROLE.ADMIN, active: true },
+  });
+  await Promise.all(admins.map((a) => notify(a.id, message, "AUDIT", vendorId)));
+}
+
+/**
+ * Notify every active user in a department (managers + members). Procurement
+ * has no standalone manager login — Admin acts as its reviewer — so a
+ * department with no members (Procurement) falls back to notifying admins.
+ */
 export async function notifyDept(
   departmentId: string,
   message: string,
@@ -29,14 +40,39 @@ export async function notifyDept(
   const users = await prisma.user.findMany({
     where: { departmentId, active: true },
   });
+  if (users.length === 0) {
+    await notifyAdmins(message, vendorId);
+    return;
+  }
   await Promise.all(users.map((u) => notify(u.id, message, "TASK", vendorId)));
 }
 
-export async function notifyAdmins(message: string, vendorId?: string) {
-  const admins = await prisma.user.findMany({
-    where: { role: ROLE.ADMIN, active: true },
+/**
+ * Reminds each department manager about reviews newly in the amber SLA
+ * zone (≤2 days left, not yet breached). Triggered as a side effect of
+ * Admin loading the Status Dashboard — this app has no scheduler — and is
+ * idempotent per review via slaReminderSentAt, so it won't re-notify on
+ * every subsequent dashboard load.
+ */
+export async function sendSlaReminders() {
+  const reviews = await prisma.deptReview.findMany({
+    where: { slaState: SLA_STATE.RUNNING, slaDueAt: { not: null }, slaReminderSentAt: null },
+    include: { department: true, vendor: true },
   });
-  await Promise.all(admins.map((a) => notify(a.id, message, "AUDIT", vendorId)));
+  for (const r of reviews) {
+    if (isBreached(r.slaDueAt, r.slaState)) continue;
+    const dl = daysLeft(r.slaDueAt);
+    if (dl == null || dl > 2) continue;
+    const managerId = r.department.managerId;
+    if (!managerId) continue; // Procurement has no standalone manager
+    await notify(
+      managerId,
+      `SLA reminder: "${r.vendor.name}"'s ${DEPT_LABEL[r.department.key]} review is due ${dl <= 0 ? "today" : `in ${dl}d`}.`,
+      "TASK",
+      r.vendorId
+    );
+    await prisma.deptReview.update({ where: { id: r.id }, data: { slaReminderSentAt: new Date() } });
+  }
 }
 
 export async function audit(

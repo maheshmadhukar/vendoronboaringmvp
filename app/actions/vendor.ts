@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireVendor } from "@/lib/session";
 import { VSTATUS, DOC_STATUS } from "@/lib/constants";
-import { createDeptReviews, recomputeVendorStatus, notifyDept, notify, getConfig } from "@/lib/workflow";
+import { createDeptReviews, recomputeVendorStatus, notifyDept, notify, getConfig, audit } from "@/lib/workflow";
 import { getVendorDocTypes } from "@/lib/vendor";
 
 const GSTIN_RE = /^[0-9]{2}[A-Z0-9]{10}[0-9A-Z]{3}$/i;
@@ -127,4 +127,26 @@ export async function signBuyerDoc(formData: FormData) {
   });
   revalidatePath("/vendor/buyer-documents");
   revalidatePath("/admin");
+}
+
+// Vendor's reply in the clarification thread — closes the loop on a dept's
+// "Ask for clarification" question. Posted as a plain comment (no status
+// change), and notifies whichever department the reply is aimed at.
+export async function replyToComment(_prev: unknown, formData: FormData) {
+  const user = await requireVendor();
+  const vendorId = user.vendorId!;
+  const body = String(formData.get("body") || "").trim();
+  if (!body) return { error: "Write a reply first." };
+  const departmentId = String(formData.get("departmentId") || "") || null;
+  const documentId = String(formData.get("documentId") || "") || null;
+
+  await prisma.comment.create({
+    data: { vendorId, departmentId, documentId, authorId: user.id, body, kind: "NOTE" },
+  });
+  await audit(user.id, "VENDOR_REPLY", vendorId, body);
+  if (departmentId) await notifyDept(departmentId, `${user.vendor?.name ?? "The vendor"} replied: ${body}`, vendorId);
+
+  revalidatePath("/vendor");
+  if (documentId) revalidatePath(`/vendor/documents`);
+  return { ok: "Reply sent." };
 }

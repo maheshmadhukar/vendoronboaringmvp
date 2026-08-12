@@ -4,7 +4,7 @@ import Shell from "@/app/components/Shell";
 import { loadOwnedDocument } from "@/lib/dept";
 import { prisma } from "@/lib/prisma";
 import { getDocumentContent, isRichDocType } from "@/lib/documentContent";
-import { VSTATUS } from "@/lib/constants";
+import { ROLE, VSTATUS } from "@/lib/constants";
 import DocumentActions from "./DocumentActions";
 
 const docTone: Record<string, string> = {
@@ -13,7 +13,7 @@ const docTone: Record<string, string> = {
 
 export default async function DocumentPage({ params }: { params: Promise<{ vendorId: string; documentId: string }> }) {
   const { vendorId, documentId } = await params;
-  const { document } = await loadOwnedDocument(documentId);
+  const { user, document } = await loadOwnedDocument(documentId);
   if (document.vendorId !== vendorId) redirect("/unauthorized");
   // Halted onboardings are invisible to departments entirely, not just read-only.
   if (document.vendor.status === VSTATUS.HALTED) redirect("/unauthorized");
@@ -31,7 +31,7 @@ export default async function DocumentPage({ params }: { params: Promise<{ vendo
 
   return (
     <Shell
-      active="queue"
+      active={user.role === ROLE.ADMIN ? "procurement" : "queue"}
       title={`${document.documentType.name} — Document Review`}
       crumbs={
         <>

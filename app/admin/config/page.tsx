@@ -3,10 +3,10 @@ import { requireAdmin } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { getConfig } from "@/lib/workflow";
 import { DEPT_LABEL } from "@/lib/constants";
-import { updateDocType, setDocumentTypeActive, setBuyerDocTemplateActive } from "@/app/actions/admin";
+import { updateDocType, setDocumentTypeActive } from "@/app/actions/admin";
 import ConfigForm from "./ConfigForm";
 import AddDocumentTypeForm from "./AddDocumentTypeForm";
-import AddBuyerDocTemplateForm from "./AddBuyerDocTemplateForm";
+import BuyerDocTemplateFileCell from "./BuyerDocTemplateFileCell";
 
 const DOC_FORMATS = ["doc", "pdf", "jpeg"] as const;
 
@@ -78,28 +78,18 @@ export default async function ConfigPage() {
         </div>
         <div className="table-wrap">
           <table className="table">
-            <thead><tr><th>Document</th><th>Routed to</th><th>Active</th><th></th></tr></thead>
+            <thead><tr><th>Document</th><th>Routed to</th><th>File</th><th>Active</th></tr></thead>
             <tbody>
               {buyerDocTemplates.map((t) => (
                 <tr key={t.id} style={t.active ? undefined : { opacity: 0.55 }}>
                   <td className="strong">{t.name}</td>
                   <td>{DEPT_LABEL[t.departmentKey] ?? t.departmentKey}</td>
+                  <td><BuyerDocTemplateFileCell templateId={t.id} filename={t.filename} sizeKb={t.sizeKb} /></td>
                   <td>{t.active ? <span className="chip good">Active</span> : <span className="chip neutral">Inactive</span>}</td>
-                  <td>
-                    <form action={setBuyerDocTemplateActive}>
-                      <input type="hidden" name="id" value={t.id} />
-                      <input type="hidden" name="active" value={t.active ? "false" : "true"} />
-                      <button className={`btn sm ${t.active ? "danger" : ""}`}>{t.active ? "Remove" : "Restore"}</button>
-                    </form>
-                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
-        <div className="card-pad">
-          <div className="section-label">Add a buyer document template</div>
-          <AddBuyerDocTemplateForm depts={depts.map((d) => ({ id: d.id, label: DEPT_LABEL[d.key] ?? d.name }))} />
         </div>
       </div>
     </Shell>

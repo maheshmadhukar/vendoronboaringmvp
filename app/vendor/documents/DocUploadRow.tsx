@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import { uploadDocument } from "@/app/actions/vendor";
 import { Chip } from "@/app/components/ui";
+import CheckIssueLink from "@/app/components/CheckIssueLink";
 
 const tone: Record<string, string> = {
   PENDING: "neutral", SUBMITTED: "info", APPROVED: "good", REJECTED: "bad", CHANGES_REQUESTED: "warn",
@@ -10,8 +11,11 @@ const tone: Record<string, string> = {
 
 type Doc = { id: string; name: string; accepted: string; maxMb: number; helper?: string | null; dept: string };
 type Cur = { filename?: string | null; status: string; reviewNote?: string | null } | null;
+type IssueComment = { id: string; author: { name: string }; kind: string; createdAt: Date; body: string };
 
-export default function DocUploadRow({ doc, current, editable }: { doc: Doc; current: Cur; editable: boolean }) {
+export default function DocUploadRow({
+  doc, current, editable, comments = [],
+}: { doc: Doc; current: Cur; editable: boolean; comments?: IssueComment[] }) {
   const [state, action, pending] = useActionState(uploadDocument, null as { error?: string; ok?: string } | null);
   const status = current?.status ?? "PENDING";
   return (
@@ -21,7 +25,7 @@ export default function DocUploadRow({ doc, current, editable }: { doc: Doc; cur
         <div className="doc-info">
           <div className="doc-name">{doc.name}</div>
           <div className="doc-meta">{doc.dept} · accepted: {doc.accepted} · max {doc.maxMb}MB {current?.filename ? `· ${current.filename}` : ""}</div>
-          {current?.reviewNote ? <div className="doc-flag">{current.reviewNote}</div> : null}
+          {comments.length > 0 ? <CheckIssueLink docName={doc.name} comments={comments} /> : null}
           {doc.helper ? <div className="doc-meta">{doc.helper}</div> : null}
         </div>
         <Chip tone={tone[status] ?? "neutral"}>{status.replace(/_/g, " ").toLowerCase()}</Chip>

@@ -1,14 +1,16 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/lib/session";
-import { ROLE, DEPT_LABEL } from "@/lib/constants";
+import { getCurrentUser, getSession, isDemoModeEnabled } from "@/lib/session";
+import { ROLE, DEPT_LABEL, DEMO_PERSONAS } from "@/lib/constants";
 import { logoutAction } from "@/app/actions/auth";
+import PersonaSwitcherMenu from "./PersonaSwitcherMenu";
 
 type NavItem = { href: string; label: string; icon: string; key: string };
 
 const NAV: Record<string, NavItem[]> = {
   ADMIN: [
     { href: "/admin", label: "Status Dashboard", icon: "▚", key: "dashboard" },
+    { href: "/dept", label: "Procurement Review", icon: "✔", key: "procurement" },
     { href: "/admin/access", label: "Access & Invites", icon: "✦", key: "access" },
     { href: "/admin/config", label: "Configuration", icon: "⚙", key: "config" },
     { href: "/admin/analytics", label: "Analytics", icon: "◔", key: "analytics" },
@@ -35,6 +37,9 @@ export default async function Shell({
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
+
+  const session = await getSession();
+  const showPersonaSwitcher = isDemoModeEnabled() && (user.role === ROLE.ADMIN || !!session.demoAdminId);
 
   const unread = user._count.notifications;
 
@@ -89,7 +94,10 @@ export default async function Shell({
       <div className="main">
         <div className="topbar">
           <div className="title">{title}</div>
-          <div className="right">
+          <div className="right" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {showPersonaSwitcher ? (
+              <PersonaSwitcherMenu personas={DEMO_PERSONAS} currentEmail={user.email} showReturnToAdmin={!!session.demoAdminId} />
+            ) : null}
             <Link href="/notifications" className="btn sm ghost" aria-label="Notifications">
               ◉ {unread > 0 ? <span className="chip bad">{unread}</span> : null}
             </Link>

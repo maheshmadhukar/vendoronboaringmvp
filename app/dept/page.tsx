@@ -4,9 +4,9 @@ import { Chip, Empty } from "@/app/components/ui";
 import { requireDept } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { getConfig } from "@/lib/workflow";
-import { DEPT_LABEL, REVIEW_STATUS, REVIEW_TONE, VSTATUS } from "@/lib/constants";
+import { DEPT_LABEL, REVIEW_STATUS, REVIEW_TONE, ROLE, VSTATUS } from "@/lib/constants";
 import { fmtDate } from "@/lib/format";
-import { isBreached, slaVisual } from "@/lib/sla";
+import { isBreached, slaVisual, daysLeft } from "@/lib/sla";
 
 export default async function DeptQueue() {
   const user = await requireDept();
@@ -26,15 +26,30 @@ export default async function DeptQueue() {
   const done = reviews.filter((r) => r.status !== REVIEW_STATUS.PENDING);
 
   const breachedCount = pending.filter((r) => isBreached(r.slaDueAt, r.slaState)).length;
+  // Amber = within 2 days of the due date and not already breached — mirrors the warn threshold in lib/sla.ts.
+  const amber = pending.filter((r) => {
+    if (isBreached(r.slaDueAt, r.slaState)) return false;
+    const dl = daysLeft(r.slaDueAt);
+    return dl != null && dl <= 2;
+  });
 
   return (
-    <Shell active="queue" title={`${DEPT_LABEL[dept.key]} — Review Queue`}>
+    <Shell active={user.role === ROLE.ADMIN ? "procurement" : "queue"} title={`${DEPT_LABEL[dept.key]} — Review Queue`}>
       <div className="page-head">
         <div>
           <h1>{DEPT_LABEL[dept.key]} Review Queue</h1>
           <p>Vendors routed to your department. You review only {DEPT_LABEL[dept.key]} documents; other departments handle theirs.</p>
         </div>
       </div>
+
+      {amber.length > 0 ? (
+        <div className="alert warn" style={{ marginBottom: 18 }}>
+          <span>
+            <b>SLA reminder:</b> {amber.map((r) => r.vendor.name).join(", ")}{" "}
+            {amber.length === 1 ? "is" : "are"} due within 2 days.
+          </span>
+        </div>
+      ) : null}
 
       <div className="grid-3" style={{ marginBottom: 20 }}>
         <div className="stat"><div className="label">Awaiting your review</div><div className="value">{pending.length}</div></div>

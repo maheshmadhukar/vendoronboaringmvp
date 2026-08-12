@@ -42,8 +42,7 @@ export default function InviteVendorForm({ templates }: { templates: { id: strin
           </span>
         </div>
       ) : null}
-      <button className="btn primary" disabled={pending}>{pending ? "Creating…" : "Create invite"}</button>
-      <span className="btn-note" style={{ marginLeft: 10 }}>Duplicate vendors are blocked. Vendors cannot self-register.</span>
+      <button className="btn primary" disabled={pending}>{pending ? "Sending…" : "Send Invite to Vendor"}</button>
     </form>
   );
 }

@@ -3,10 +3,17 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getIronSession, type IronSession } from "iron-session";
 import { prisma } from "./prisma";
-import { ROLE } from "./constants";
+import { ROLE, DEPT } from "./constants";
 
 export interface SessionData {
   userId?: string;
+  /** Set while impersonating another persona via the demo switcher; the admin to return to. */
+  demoAdminId?: string;
+}
+
+/** Demo persona switcher (top-right, admin-only) is inert unless DEMO_MODE=true. */
+export function isDemoModeEnabled(): boolean {
+  return process.env.DEMO_MODE === "true";
 }
 
 export const sessionOptions = {
@@ -83,9 +90,20 @@ export async function requireVendor() {
 /**
  * Require a DEPT user. If deptKey is given, the user must belong to that
  * department (horizontal RBAC) — else /unauthorized.
+ *
+ * There is no standalone Procurement Manager login: Admin acts as the
+ * Procurement department reviewer, so an ADMIN user is let through here
+ * (scoped to Procurement only) instead of via requireRole(DEPT).
  */
 export async function requireDept(deptKey?: string) {
-  const user = await requireRole(ROLE.DEPT);
+  const user = await requireUser();
+  if (user.role === ROLE.ADMIN) {
+    if (deptKey && deptKey !== DEPT.PROCUREMENT) redirect("/unauthorized");
+    const department = await prisma.department.findUnique({ where: { key: DEPT.PROCUREMENT } });
+    if (!department) redirect("/unauthorized");
+    return { ...user, department, departmentId: department.id };
+  }
+  if (user.role !== ROLE.DEPT) redirect("/unauthorized");
   if (!user.department) redirect("/unauthorized");
   if (deptKey && user.department.key !== deptKey) redirect("/unauthorized");
   return user;

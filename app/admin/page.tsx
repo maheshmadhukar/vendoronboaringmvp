@@ -3,26 +3,59 @@ import Shell from "@/app/components/Shell";
 import { Chip, Empty } from "@/app/components/ui";
 import { requireAdmin } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { VSTATUS, VSTATUS_LABEL, VSTATUS_TONE } from "@/lib/constants";
+import { VSTATUS, VSTATUS_LABEL, VSTATUS_TONE, DEPT_ORDER, DEPT_LABEL } from "@/lib/constants";
 import { fmtDate, fmtMoney } from "@/lib/format";
-import { vendorSlaSummary } from "@/lib/sla";
+import { reviewSlaVisual, daysLeft, isBreached } from "@/lib/sla";
+import { resolveDashboardRange, inRange } from "@/lib/period";
+import { sendSlaReminders } from "@/lib/workflow";
+import { resumeVendor } from "@/app/actions/admin";
+import Spotlight from "./Spotlight";
+import RangeSelect from "./RangeSelect";
 
-function SlaCell({ reviews }: { reviews: Parameters<typeof vendorSlaSummary>[0] }) {
-  const sla = vendorSlaSummary(reviews);
-  if (sla.kind === "clear") return <span className="sub">—</span>;
-  if (sla.kind === "breached") return <Chip tone="bad">{sla.label}</Chip>;
+const SLA_DEPTS = DEPT_ORDER.filter((k) => k !== "PROCUREMENT");
+
+// Finer-grained color band for this cell only (the shared reviewSlaVisual
+// tone system elsewhere in the app stays 4-color) — splits "warn" into a
+// ≤2-days amber and a distinct "due today" light-orange.
+function slaDotColor(r: { slaDueAt: Date | null; slaState: string; everBreached: boolean }): string {
+  if (r.everBreached || isBreached(r.slaDueAt, r.slaState)) return "var(--bad)";
+  if (r.slaState === "MET") return "var(--good)";
+  if (r.slaState !== "RUNNING" || !r.slaDueAt) return "var(--ink-faint)";
+  const dl = daysLeft(r.slaDueAt);
+  if (dl == null) return "var(--ink-faint)";
+  if (dl <= 0) return "var(--due)";
+  if (dl <= 2) return "var(--warn)";
+  return "var(--good)";
+}
+
+function SlaCell({
+  reviews,
+}: {
+  reviews: Array<{ department: { key: string }; slaStartedAt: Date | null; slaDueAt: Date | null; slaState: string; everBreached: boolean }>;
+}) {
+  const byDept = SLA_DEPTS.map((k) => reviews.find((r) => r.department.key === k)).filter(
+    (r): r is NonNullable<typeof r> => !!r
+  );
+  if (byDept.length === 0) return <span className="sub">—</span>;
   return (
-    <div>
-      <Chip tone={sla.tone}>{sla.label}</Chip>
-      <div className="bar-track" style={{ marginTop: 5, height: 5, minWidth: 90 }}>
-        <div
-          className="bar-fill"
-          style={{
-            width: `${sla.pct}%`,
-            background: sla.tone === "warn" ? "var(--warn)" : sla.tone === "bad" ? "var(--bad)" : "var(--good)",
-          }}
-        />
-      </div>
+    <div style={{ display: "flex", gap: 5 }}>
+      {byDept.map((r) => {
+        const v = reviewSlaVisual(r);
+        const bg = slaDotColor(r);
+        return (
+          <span
+            key={r.department.key}
+            title={`${DEPT_LABEL[r.department.key]}: ${v.label}`}
+            style={{
+              width: 20, height: 20, borderRadius: "50%", background: bg,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 10, fontWeight: 700, color: "#fff", flexShrink: 0,
+            }}
+          >
+            {DEPT_LABEL[r.department.key][0]}
+          </span>
+        );
+      })}
     </div>
   );
 }
@@ -37,15 +70,21 @@ function StatLink({ href, label, value, valueColor }: { href: string; label: str
 }
 
 type VendorTab = "all" | "inprogress" | "onboarded" | "rejected";
-type SearchParams = { sort?: string; dir?: string; tab?: string };
+type SearchParams = { sort?: string; dir?: string; tab?: string; focus?: string; range?: string };
 
 export default async function AdminDashboard({ searchParams }: { searchParams: Promise<SearchParams> }) {
   await requireAdmin();
   const sp = await searchParams;
-  const vendors = await prisma.vendor.findMany({
+  await sendSlaReminders();
+  const allVendors = await prisma.vendor.findMany({
     orderBy: { updatedAt: "desc" },
-    include: { deptReviews: true, buyerDocs: { include: { template: true } } },
+    include: { deptReviews: { include: { department: true } }, buyerDocs: { include: { template: true } } },
   });
+  const { mode: rangeMode, from: rangeFrom } = resolveDashboardRange(sp.range);
+  const now = new Date();
+  const vendors = allVendors.filter(
+    (v) => inRange(v.createdAt, rangeFrom, now) || inRange(v.submittedAt, rangeFrom, now)
+  );
 
   const tab: VendorTab =
     sp.tab === "all" ? "all" : sp.tab === "onboarded" ? "onboarded" : sp.tab === "rejected" ? "rejected" : "inprogress";
@@ -92,24 +131,29 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
     return v.buyerDocs.every((d) => d.signedAt) ? "done" : "in-progress";
   }
   const colCount = tab === "inprogress" ? 7 : 6;
+  const spotlightKey = [sp.tab, sp.focus, sp.sort, sp.dir, sp.range].join("|");
 
   return (
     <Shell active="dashboard" title="Status Dashboard">
+      <Spotlight key={spotlightKey} targetId={sp.focus ?? null} />
       <div className="page-head">
         <div>
           <h1>Status Dashboard</h1>
           <p>Oversight of every vendor onboarding, and the actions waiting on you.</p>
         </div>
+        <RangeSelect mode={rangeMode} />
       </div>
 
       <div className="grid-4" style={{ marginBottom: 22 }}>
-        <StatLink href="?tab=all" label="Total vendors" value={vendors.length} />
-        <StatLink href="?tab=inprogress" label="In progress" value={inFlight} />
-        <a href="#pending-action" className="stat stat-link">
-          <div className="label">Needs your action</div>
-          <div className="value" style={{ color: attention.length ? "var(--accent)" : undefined }}>{attention.length}</div>
-        </a>
-        <StatLink href="?tab=onboarded" label="Onboarded" value={onboardedList.length} />
+        <StatLink href="?tab=all&focus=all-vendors" label="Total vendors" value={vendors.length} />
+        <StatLink href="?tab=inprogress&focus=all-vendors" label="In progress" value={inFlight} />
+        <StatLink
+          href={`?tab=${tab}&focus=pending-action`}
+          label="Needs your action"
+          value={attention.length}
+          valueColor={attention.length ? "var(--accent)" : undefined}
+        />
+        <StatLink href="?tab=onboarded&focus=all-vendors" label="Onboarded" value={onboardedList.length} />
       </div>
 
       <div className="card" id="pending-action" style={{ marginBottom: 18 }}>
@@ -129,7 +173,7 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
                     <td className="sub">
                       {v.status === VSTATUS.FLAGGED ? "Flagged by a department — audit needed" :
                        v.status === VSTATUS.FINAL_PENDING ? "All departments approved — final approval" :
-                       "Halted — review or resume"}
+                       "Onboarding paused — review or resume"}
                     </td>
                     <td><Link className="btn sm primary" href={`/admin/vendors/${v.id}`}>Open</Link></td>
                   </tr>
@@ -140,7 +184,7 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
         )}
       </div>
 
-      <div className="card">
+      <div className="card" id="all-vendors">
         <div className="card-pad" style={{ paddingBottom: 0 }}>
           <div className="section-label">All vendors</div>
           <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
@@ -184,7 +228,15 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
                     const label = status === "done" ? "Done" : status === "in-progress" ? "In progress" : "Not-Applicable";
                     return <td><Chip tone={status === "done" ? "good" : "neutral"}>{label}</Chip></td>;
                   })() : null}
-                  <td><Link className="btn sm" href={`/admin/vendors/${v.id}`}>View</Link></td>
+                  <td style={{ display: "flex", gap: 6 }}>
+                    <Link className="btn sm" href={`/admin/vendors/${v.id}`}>View</Link>
+                    {v.status === VSTATUS.HALTED ? (
+                      <form action={resumeVendor}>
+                        <input type="hidden" name="vendorId" value={v.id} />
+                        <button className="btn sm primary">Resume</button>
+                      </form>
+                    ) : null}
+                  </td>
                 </tr>
               ))}
             </tbody>

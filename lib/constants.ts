@@ -42,7 +42,7 @@ export const VSTATUS_LABEL: Record<string, string> = {
   IN_REVIEW: "In review",
   CHANGES_REQUESTED: "Changes requested",
   FLAGGED: "Flagged to admin",
-  HALTED: "Halted",
+  HALTED: "Onboarding paused",
   DEPT_APPROVED: "Dept-approved",
   FINAL_PENDING: "Final approval pending",
   ONBOARDED: "Onboarded",
@@ -103,4 +103,14 @@ export const PIPELINE_STAGES = [
   "Department Review",
   "Final Approval",
   "Onboarded",
+] as const;
+
+// Demo login accounts (password: demo1234), shared by the login quick-fill
+// and the DEMO_MODE persona switcher.
+export const DEMO_PERSONAS = [
+  { label: "Admin", email: "admin@buyer.com" },
+  { label: "Finance Mgr", email: "adminfinance@buyer.com" },
+  { label: "Legal Mgr", email: "adminlegal@buyer.com" },
+  { label: "HR Mgr", email: "adminhr@buyer.com" },
+  { label: "Vendor (Anugrah)", email: "karan@anugrahfreight.in" },
 ] as const;
