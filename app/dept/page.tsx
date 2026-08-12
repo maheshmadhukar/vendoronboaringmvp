@@ -1,16 +1,24 @@
 import Link from "next/link";
 import Shell from "@/app/components/Shell";
 import { Chip, Empty } from "@/app/components/ui";
+import RangeSelect from "@/app/admin/RangeSelect";
 import { requireDept } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { getConfig } from "@/lib/workflow";
-import { DEPT_LABEL, REVIEW_STATUS, REVIEW_TONE, ROLE, VSTATUS } from "@/lib/constants";
+import { DEPT, DEPT_LABEL, REVIEW_STATUS, REVIEW_TONE, ROLE, VSTATUS } from "@/lib/constants";
 import { fmtDate } from "@/lib/format";
 import { isBreached, slaVisual, daysLeft } from "@/lib/sla";
+import { resolveDashboardRange } from "@/lib/period";
 
-export default async function DeptQueue() {
+type SearchParams = { range?: string };
+
+export default async function DeptQueue({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const user = await requireDept();
   const dept = user.department!;
+
+  if (dept.key === DEPT.PROCUREMENT) {
+    return <OnboardedVendors searchParams={searchParams} />;
+  }
 
   const [cfg, allReviews] = await Promise.all([
     getConfig(),
@@ -120,6 +128,50 @@ export default async function DeptQueue() {
           </div>
         </div>
       ) : null}
+    </Shell>
+  );
+}
+
+async function OnboardedVendors({ searchParams }: { searchParams: Promise<SearchParams> }) {
+  const sp = await searchParams;
+  const { mode: rangeMode, from } = resolveDashboardRange(sp.range);
+
+  const vendors = await prisma.vendor.findMany({
+    where: { status: VSTATUS.ONBOARDED, onboardedAt: { gte: from, lte: new Date() } },
+    orderBy: { onboardedAt: "desc" },
+  });
+
+  return (
+    <Shell active="procurement" title="Procurement — Onboarded Vendors">
+      <div className="page-head">
+        <div>
+          <h1>Onboarded Vendors</h1>
+          <p>Vendors who have completed onboarding. View their full submitted document set.</p>
+        </div>
+        <RangeSelect mode={rangeMode} />
+      </div>
+
+      <div className="card">
+        {vendors.length === 0 ? (
+          <Empty title="No onboarded vendors in this window" hint="Try a wider date range." />
+        ) : (
+          <div className="table-wrap">
+            <table className="table">
+              <thead><tr><th>Vendor</th><th>Category</th><th>Onboarded</th><th></th></tr></thead>
+              <tbody>
+                {vendors.map((v) => (
+                  <tr key={v.id}>
+                    <td className="strong">{v.name}</td>
+                    <td className="sub">{v.category}</td>
+                    <td className="tnum">{fmtDate(v.onboardedAt)}</td>
+                    <td><Link className="btn sm" href={`/dept/onboarded/${v.id}`}>View</Link></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </Shell>
   );
 }

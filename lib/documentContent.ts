@@ -183,3 +183,27 @@ export function getDocumentContent(key: string, vendor: Vendor): DocContent {
       };
   }
 }
+
+/** Plain-text rendering of a document's mock content, for the client-side "Download" button. */
+export function buildDocumentText(
+  doc: { documentTypeName: string; vendorName: string; filename: string | null },
+  content: DocContent,
+): string {
+  const lines = [
+    doc.documentTypeName,
+    `Vendor: ${doc.vendorName}`,
+    `File: ${doc.filename ?? "—"}`,
+    "",
+  ];
+  if (content.kind === "rich") {
+    for (const s of content.sections) {
+      lines.push(s.heading, s.body, "");
+    }
+  } else {
+    for (const f of content.fields) {
+      lines.push(`${f.label}: ${f.value}`);
+    }
+    lines.push("", `Verification: ${content.verification.text}`);
+  }
+  return lines.join("\n");
+}

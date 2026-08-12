@@ -54,6 +54,21 @@ export async function inviteVendor(_prev: unknown, formData: FormData) {
   return { ok: `Invite created for ${name}.`, link: `/invite/${token}` };
 }
 
+export async function updateDeptManagerEmail(_prev: unknown, formData: FormData) {
+  const admin = await requireAdmin();
+  const userId = String(formData.get("userId") || "");
+  const email = String(formData.get("email") || "").trim().toLowerCase();
+  if (!email) return { error: "Email cannot be blank." };
+
+  const dupe = await prisma.user.findUnique({ where: { email } });
+  if (dupe && dupe.id !== userId) return { error: "A user with this email already exists." };
+
+  await prisma.user.update({ where: { id: userId }, data: { email } });
+  await audit(admin.id, "UPDATE_USER_EMAIL", userId, email);
+  revalidatePath("/admin/access");
+  return { ok: "Email updated." };
+}
+
 export async function setUserActive(formData: FormData) {
   await requireAdmin();
   const userId = String(formData.get("userId") || "");

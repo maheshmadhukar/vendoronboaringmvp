@@ -2,10 +2,10 @@ import Shell from "@/app/components/Shell";
 import { Chip } from "@/app/components/ui";
 import { requireAdmin } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { ROLE, DEPT_LABEL, DEPT_ORDER } from "@/lib/constants";
+import { ROLE, DEPT, DEPT_LABEL, DEPT_ORDER } from "@/lib/constants";
 import { setUserActive } from "@/app/actions/admin";
 import InviteVendorForm from "./InviteVendorForm";
-import WorkdayFetchBox from "./WorkdayFetchBox";
+import EditManagerEmailForm from "./EditManagerEmailForm";
 
 export default async function AccessPage() {
   await requireAdmin();
@@ -13,7 +13,6 @@ export default async function AccessPage() {
   const depts = await prisma.department.findMany({ include: { users: true }, orderBy: { name: "asc" } });
   const buyerDocTemplates = await prisma.buyerDocTemplate.findMany({ where: { active: true }, orderBy: { order: "asc" } });
 
-  const internal = users.filter((u) => u.role !== ROLE.VENDOR);
   const vendors = users.filter((u) => u.role === ROLE.VENDOR);
 
   return (
@@ -32,50 +31,20 @@ export default async function AccessPage() {
         <div className="card-pad" style={{ paddingBottom: 0 }}><div className="section-label">Department managers</div></div>
         <div className="table-wrap">
           <table className="table">
-            <thead><tr><th>Department</th><th>Manager</th></tr></thead>
+            <thead><tr><th>Department</th><th>Manager</th><th>Email</th></tr></thead>
             <tbody>
-              {DEPT_ORDER.map((k) => {
+              {DEPT_ORDER.filter((k) => k !== DEPT.PROCUREMENT).map((k) => {
                 const d = depts.find((x) => x.key === k);
                 if (!d) return null;
                 const manager = d.users.find((u) => u.id === d.managerId);
                 return (
                   <tr key={k}>
                     <td className="strong">{DEPT_LABEL[k]}</td>
-                    <td>
-                      {manager?.name ?? "—"}
-                      <WorkdayFetchBox />
-                    </td>
+                    <td>{manager?.name ?? "—"}</td>
+                    <td>{manager ? <EditManagerEmailForm userId={manager.id} currentEmail={manager.email} /> : "—"}</td>
                   </tr>
                 );
               })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div className="card" style={{ marginTop: 18 }}>
-        <div className="card-pad" style={{ paddingBottom: 0 }}><div className="section-label">Internal users</div></div>
-        <div className="table-wrap">
-          <table className="table">
-            <thead><tr><th>Name</th><th>Role</th><th>Department</th><th>Access</th><th></th></tr></thead>
-            <tbody>
-              {internal.map((u) => (
-                <tr key={u.id}>
-                  <td><div className="strong">{u.name}</div><div className="sub">{u.email}</div></td>
-                  <td>{u.role === ROLE.ADMIN ? "Admin" : "Dept user"}</td>
-                  <td>{u.department ? DEPT_LABEL[u.department.key] : "—"}</td>
-                  <td>{u.active ? <Chip tone="good">active</Chip> : <Chip tone="neutral">revoked</Chip>}</td>
-                  <td>
-                    {u.role !== ROLE.ADMIN ? (
-                      <form action={setUserActive}>
-                        <input type="hidden" name="userId" value={u.id} />
-                        <input type="hidden" name="active" value={u.active ? "false" : "true"} />
-                        <button className="btn sm">{u.active ? "Revoke" : "Grant"}</button>
-                      </form>
-                    ) : null}
-                  </td>
-                </tr>
-              ))}
             </tbody>
           </table>
         </div>
