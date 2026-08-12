@@ -4,7 +4,7 @@
 
 import type { Vendor, DeptReview, Department, Document, DocumentType, Comment } from "@prisma/client";
 import { VSTATUS, REVIEW_STATUS, DOC_STATUS, DEPT_ORDER, DEPT_LABEL, REJECTION_REASON_ORDER, REJECTION_REASON_LABEL } from "./constants";
-import { isBreached, daysLeft } from "./sla";
+import { isBreached, workingDaysLeft } from "./sla";
 import { inRange } from "./period";
 
 const DAY = 864e5;
@@ -69,7 +69,7 @@ export function computeExecutive(vendors: VendorRow[], period: Range, prev: Rang
     v.deptReviews.some((r) => {
       if (r.status !== REVIEW_STATUS.PENDING) return false;
       if (r.everBreached || isBreached(r.slaDueAt, r.slaState)) return true;
-      const dl = daysLeft(r.slaDueAt);
+      const dl = workingDaysLeft(r.slaDueAt);
       return dl != null && dl <= 2;
     })
   ).length;
