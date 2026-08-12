@@ -41,6 +41,8 @@ model User {
   notifications  Notification[]
   comments       Comment[]
   auditLogs      AuditLog[]
+
+  @@index([departmentId])
 }
 
 model Vendor {
@@ -64,6 +66,8 @@ model Vendor {
   createdById   String?
   createdBy     User?    @relation("VendorCreatedBy", fields: [createdById], references: [id])
   account       User?    @relation("VendorAccount")
+  registeredAt         DateTime? // invite consumed / vendor account activated
+  onboardingStartedAt  DateTime? // first business-details save or first document upload
   submittedAt   DateTime?
   onboardedAt   DateTime?
   createdAt     DateTime @default(now())
@@ -95,6 +99,8 @@ model OtpCode {
   expiresAt  DateTime
   consumedAt DateTime?
   createdAt  DateTime  @default(now())
+
+  @@index([email])
 }
 
 model DocumentType {
@@ -122,8 +128,12 @@ model Document {
   sizeKb         Int?
   status         String   @default("PENDING") // PENDING | SUBMITTED | APPROVED | REJECTED | CHANGES_REQUESTED
   reviewNote     String?
+  rejectionReason String? // categorized reason on reject/changes — see REJECTION_REASON in lib/constants.ts
+  revisionCount  Int      @default(0) // number of resubmission cycles for this document
   uploadedAt     DateTime?
   updatedAt      DateTime @updatedAt
+
+  @@index([vendorId])
 }
 
 model DeptReview {
@@ -134,6 +144,7 @@ model DeptReview {
   department   Department @relation(fields: [departmentId], references: [id])
   status       String   @default("PENDING") // PENDING | APPROVED | REJECTED | CHANGES_REQUESTED | FLAGGED
   decidedById  String?
+  decidedAt    DateTime? // when this review reached a terminal (approved/rejected) decision
   comment      String?
   slaStartedAt DateTime?
   slaDueAt     DateTime?
@@ -146,6 +157,7 @@ model DeptReview {
   updatedAt    DateTime @updatedAt
 
   @@unique([vendorId, departmentId])
+  @@index([departmentId])
 }
 
 model Comment {
@@ -159,6 +171,9 @@ model Comment {
   body         String
   kind         String   @default("NOTE") // REJECT | CLARIFICATION | RESUBMIT | FLAG | NOTE | APPROVE
   createdAt    DateTime @default(now())
+
+  @@index([vendorId])
+  @@index([documentId])
 }
 
 model Notification {
@@ -170,6 +185,8 @@ model Notification {
   vendorId  String?
   read      Boolean  @default(false)
   createdAt DateTime @default(now())
+
+  @@index([userId])
 }
 
 model Config {
@@ -221,4 +238,6 @@ model AuditLog {
   targetId   String?
   meta       String?
   createdAt  DateTime @default(now())
+
+  @@index([targetId])
 }

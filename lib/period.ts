@@ -91,6 +91,18 @@ export function inRange(date: Date | null | undefined, from: Date, to: Date): bo
   return t >= from.getTime() && t <= to.getTime();
 }
 
+/**
+ * The immediately-preceding window of equal length, for period-over-period
+ * KPI deltas (e.g. "vs last quarter"). Works for any mode: the previous window
+ * ends just before `from` and spans the same duration.
+ */
+export function previousPeriod(period: { from: Date; to: Date }): { from: Date; to: Date } {
+  const len = period.to.getTime() - period.from.getTime();
+  const to = new Date(period.from.getTime() - 1);
+  const from = new Date(to.getTime() - len);
+  return { from, to };
+}
+
 // Rolling trailing-window filter for the Status Dashboard (distinct from the
 // calendar-aligned quarter/year period above, used by Analytics).
 export type DashboardRangeMode = "30d" | "90d" | "6m" | "1y";
