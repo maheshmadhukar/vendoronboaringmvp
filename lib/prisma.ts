@@ -11,6 +11,11 @@ const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
  * so re-root it here. Remote Turso "libsql://..." URLs pass through untouched.
  */
 function resolveDatabaseUrl(url: string): string {
+  if (!url) {
+    throw new Error(
+      "DATABASE_URL is not set. Copy .env.example to .env (local dev) or set it in your deployment environment.",
+    );
+  }
   if (!url.startsWith("file:")) return url;
   const relativePath = url.slice("file:".length);
   return `file:${path.resolve(process.cwd(), "prisma", relativePath)}`;

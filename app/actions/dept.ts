@@ -5,9 +5,15 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireDept } from "@/lib/session";
 import { loadOwnedDocument } from "@/lib/dept";
-import { REVIEW_STATUS, DOC_STATUS, VSTATUS } from "@/lib/constants";
+import { REVIEW_STATUS, DOC_STATUS, VSTATUS, REJECTION_REASON } from "@/lib/constants";
 import { recomputeDeptReviewStatus, notify, notifyAdmins, audit } from "@/lib/workflow";
 import { isBreached } from "@/lib/sla";
+
+/** Coerce a submitted reason to a known REJECTION_REASON value, else null. */
+function normalizeReason(raw: FormDataEntryValue | null): string | null {
+  const v = String(raw || "").trim();
+  return v && v in REJECTION_REASON ? v : null;
+}
 
 /** Load the review that belongs to THIS dept user's department (horizontal RBAC). */
 async function ownReview(vendorId: string) {
@@ -62,12 +68,13 @@ export async function rejectDocument(_prev: unknown, formData: FormData) {
   const documentId = String(formData.get("documentId") || "");
   const comment = String(formData.get("comment") || "").trim();
   if (!comment) return { error: "A comment is mandatory when rejecting." };
+  const reason = normalizeReason(formData.get("reason"));
   const { user, document } = await ownDocument(documentId);
   if (document.vendor.status === VSTATUS.HALTED) return { error: "Onboarding is halted by admin." };
 
   await prisma.document.update({
     where: { id: documentId },
-    data: { status: DOC_STATUS.REJECTED, reviewNote: comment },
+    data: { status: DOC_STATUS.REJECTED, reviewNote: comment, rejectionReason: reason },
   });
   await prisma.comment.create({
     data: { vendorId: document.vendorId, departmentId: user.departmentId, documentId, authorId: user.id, body: comment, kind: "REJECT" },
@@ -99,13 +106,14 @@ export async function clarifyDocument(_prev: unknown, formData: FormData) {
   const comment = String(formData.get("comment") || "").trim();
   if (!comment) return { error: "Describe what you'd like clarified." };
   const needsResubmission = formData.get("needsResubmission") === "on";
+  const reason = normalizeReason(formData.get("reason"));
   const { user, document } = await ownDocument(documentId);
   if (needsResubmission && document.vendor.status === VSTATUS.HALTED) return { error: "Onboarding is halted by admin." };
 
   if (needsResubmission) {
     await prisma.document.update({
       where: { id: documentId },
-      data: { status: DOC_STATUS.CHANGES_REQUESTED, reviewNote: comment },
+      data: { status: DOC_STATUS.CHANGES_REQUESTED, reviewNote: comment, rejectionReason: reason },
     });
   }
   await prisma.comment.create({

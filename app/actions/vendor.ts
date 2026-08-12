@@ -41,6 +41,8 @@ export async function saveBusinessDetails(_prev: unknown, formData: FormData) {
       gstin: gstin || null,
       turnover: formData.get("turnover") ? Number(formData.get("turnover")) : null,
       companyEmail: String(formData.get("companyEmail") || "").trim() || null,
+      // Stamp the moment the vendor first begins onboarding (engagement analytics).
+      onboardingStartedAt: user.vendor?.onboardingStartedAt ?? new Date(),
     },
   });
   revalidatePath("/vendor");
@@ -66,16 +68,38 @@ export async function uploadDocument(_prev: unknown, formData: FormData) {
     return { error: `${dt.name} exceeds the ${dt.maxSizeMb}MB limit.` };
 
   const existing = await prisma.document.findFirst({ where: { vendorId, documentTypeId } });
+  // Re-uploading a doc the department sent back counts as a resubmission cycle.
+  const isResubmit = existing?.status === DOC_STATUS.CHANGES_REQUESTED || existing?.status === DOC_STATUS.REJECTED;
   const data = {
     filename: file.name,
     storedPath: `/uploads/${vendorId}/${file.name}`,
     sizeKb: Math.round(file.size / 1024),
     status: DOC_STATUS.SUBMITTED,
     reviewNote: null,
+    rejectionReason: null,
     uploadedAt: new Date(),
   };
-  if (existing) await prisma.document.update({ where: { id: existing.id }, data });
-  else await prisma.document.create({ data: { vendorId, documentTypeId, ...data } });
+  if (existing) {
+    await prisma.document.update({
+      where: { id: existing.id },
+      data: isResubmit ? { ...data, revisionCount: { increment: 1 } } : data,
+    });
+  } else {
+    await prisma.document.create({ data: { vendorId, documentTypeId, ...data } });
+  }
+
+  // First activity also marks onboarding as started, if the form save didn't.
+  if (!user.vendor?.onboardingStartedAt) {
+    await prisma.vendor.update({ where: { id: vendorId }, data: { onboardingStartedAt: new Date() } });
+  }
+
+  // Record the resubmission so rework/turnaround analytics can see it.
+  if (isResubmit) {
+    await prisma.comment.create({
+      data: { vendorId, documentId: existing!.id, authorId: user.id, body: `Resubmitted "${dt.name}".`, kind: "RESUBMIT" },
+    });
+    await audit(user.id, "RESUBMIT_DOCUMENT", vendorId, dt.name);
+  }
 
   revalidatePath("/vendor/documents");
   return { ok: `${dt.name} uploaded.` };

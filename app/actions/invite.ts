@@ -80,7 +80,10 @@ export async function verifyOtpAction(_prev: unknown, formData: FormData) {
   if (invite.vendorId) {
     const vendor = await prisma.vendor.findUnique({ where: { id: invite.vendorId } });
     if (vendor && vendor.status === VSTATUS.INVITED) {
-      await prisma.vendor.update({ where: { id: vendor.id }, data: { status: VSTATUS.DRAFT } });
+      await prisma.vendor.update({
+        where: { id: vendor.id },
+        data: { status: VSTATUS.DRAFT, registeredAt: vendor.registeredAt ?? new Date() },
+      });
     }
   }
 

@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { documentReviewAction } from "@/app/actions/dept";
+import { REJECTION_REASON_ORDER, REJECTION_REASON_LABEL } from "@/lib/constants";
 
 export default function DocumentActions({ documentId, mode }: { documentId: string; mode: "rail" | "bottom" }) {
   const [state, action, pending] = useActionState(documentReviewAction, null as { error?: string; ok?: string } | null);
@@ -27,7 +28,16 @@ export default function DocumentActions({ documentId, mode }: { documentId: stri
     <form action={action} style={{ marginTop: 18 }}>
       <input type="hidden" name="documentId" value={documentId} />
       <div className="field" style={{ maxWidth: 480 }}>
-        <label>Reason <span className="muted">(required to reject / ask for clarification)</span></label>
+        <label>Reason category <span className="muted">(used for rework analytics when rejecting / requesting changes)</span></label>
+        <select name="reason" defaultValue="" style={{ width: "100%", padding: "8px 10px", fontSize: 13, border: "1px solid var(--border-strong)", borderRadius: "var(--radius-sm)", background: "var(--panel)", color: "var(--ink)" }}>
+          <option value="">— Select a reason —</option>
+          {REJECTION_REASON_ORDER.map((r) => (
+            <option key={r} value={r}>{REJECTION_REASON_LABEL[r]}</option>
+          ))}
+        </select>
+      </div>
+      <div className="field" style={{ maxWidth: 480 }}>
+        <label>Comment <span className="muted">(required to reject / ask for clarification)</span></label>
         <textarea name="comment" placeholder="Explain the issue, or what you'd like the vendor to clarify…" />
       </div>
       <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, margin: "8px 0" }}>
