@@ -2,8 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser, isImpersonating, isDemoModeEnabled } from "@/lib/session";
 import { ROLE, DEPT_LABEL, DEMO_PERSONAS } from "@/lib/constants";
-import { logoutAction } from "@/app/actions/auth";
 import PersonaSwitcherMenu from "./PersonaSwitcherMenu";
+import UserMenu from "./UserMenu";
 import RealtimeRefresh from "./RealtimeRefresh";
 
 type NavItem = { href: string; label: string; icon: string; key: string };
@@ -86,15 +86,6 @@ export default async function Shell({
             Notifications {unread > 0 ? <span className="chip bad" style={{ marginLeft: "auto" }}>{unread}</span> : null}
           </Link>
         </nav>
-        <div className="sidebar-foot">
-          <div className="who">
-            <b>{user.name}</b>
-            <span>{roleLabel} · {user.email}</span>
-          </div>
-          <form action={logoutAction}>
-            <button className="btn sm ghost" style={{ width: "100%" }}>Sign out</button>
-          </form>
-        </div>
       </aside>
 
       <div className="main">
@@ -104,9 +95,7 @@ export default async function Shell({
             {showPersonaSwitcher ? (
               <PersonaSwitcherMenu personas={DEMO_PERSONAS} currentEmail={user.email} showReturnToAdmin={impersonating} />
             ) : null}
-            <Link href="/notifications" className="btn sm ghost" aria-label="Notifications">
-              ◉ {unread > 0 ? <span className="chip bad">{unread}</span> : null}
-            </Link>
+            <UserMenu name={user.name} roleLabel={roleLabel} email={user.email} />
           </div>
         </div>
         <div className="content">

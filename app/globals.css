@@ -39,14 +39,18 @@ h1,h2,h3,h4{ margin:0; }
 .nav-item:hover{ background:var(--panel-2); color:var(--ink); text-decoration:none; }
 .nav-item.active{ background:var(--panel-2); color:var(--ink); font-weight:600; }
 .nav-item .ico{ width:16px; text-align:center; opacity:.85; }
-.sidebar-foot{ margin-top:auto; border-top:1px solid var(--border); padding-top:12px; font-size:11.5px; color:var(--ink-faint); display:flex; flex-direction:column; gap:10px; }
-.who b{ display:block; color:var(--ink); font-size:12.5px; }
-.who span{ color:var(--ink-faint); font-size:11px; }
-
 .main{ flex:1; min-width:0; display:flex; flex-direction:column; }
 .topbar{ display:flex; align-items:center; justify-content:space-between; gap:16px; padding:14px 28px; border-bottom:1px solid var(--border); background:var(--panel); position:sticky; top:0; z-index:20; }
 .topbar .title{ font-size:16px; font-weight:650; letter-spacing:-.01em; }
 .topbar .right{ display:flex; align-items:center; gap:14px; }
+
+/* Topbar user tab + dropdown (name/role visible, email tucked into the menu) */
+.user-tab{ display:flex; align-items:center; gap:8px; padding:5px 10px; border-radius:8px; border:1px solid transparent; background:transparent; cursor:pointer; }
+.user-tab:hover{ background:var(--panel-2); }
+.user-tab-info{ display:flex; flex-direction:column; line-height:1.2; text-align:right; }
+.user-tab-info b{ font-size:12.5px; font-weight:650; color:var(--ink); max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.user-tab-info span{ font-size:11px; color:var(--ink-faint); }
+.user-tab-caret{ font-size:12px; color:var(--ink-faint); line-height:1; }
 .content{ padding:26px 28px 60px; max-width:1180px; width:100%; margin:0 auto; }
 
 /* ---------- Page head ---------- */
