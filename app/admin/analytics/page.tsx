@@ -17,7 +17,7 @@ import FunnelBars from "./components/FunnelBars";
 import TrendLineChart from "./charts/TrendLineChart";
 import DocCompletionDist from "./charts/DocCompletionDist";
 
-type SearchParams = { mode?: string; y?: string; q?: string; from?: string; to?: string; tab?: string };
+type SearchParams = { mode?: string; y?: string; q?: string; tab?: string };
 
 const fmtDays = (n: number | null | undefined) => (n == null ? "—" : n.toFixed(1));
 const fmtPct = (n: number | null | undefined) => (n == null ? "—" : `${n}%`);
@@ -26,7 +26,7 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
   await requireAdmin();
   const sp = await searchParams;
   // Default to the year view — the current quarter is only weeks old, so a
-  // quarter default reads sparse; the user can still switch to Quarter/Custom.
+  // quarter default reads sparse; the user can still switch to Quarter.
   const period = resolvePeriod({ mode: "year", ...sp });
   const prev = previousPeriod(period);
 
@@ -63,17 +63,10 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
     if (sp.mode) params.set("mode", sp.mode);
     if (sp.y) params.set("y", sp.y);
     if (sp.q) params.set("q", sp.q);
-    if (sp.from) params.set("from", sp.from);
-    if (sp.to) params.set("to", sp.to);
     params.set("tab", t);
     return `?${params.toString()}`;
   };
-  const modeHref = (mode: PeriodMode) => {
-    if (mode === "quarter") return `?mode=quarter&tab=${tab}`;
-    if (mode === "year") return `?mode=year&tab=${tab}`;
-    return `?mode=custom&from=${period.fromInput}&to=${period.toInput}&tab=${tab}`;
-  };
-  const inputStyle = { fontSize: 13, padding: "6px 8px", border: "1px solid var(--border-strong)", borderRadius: "var(--radius-sm)", background: "var(--panel)", color: "var(--ink)" };
+  const modeHref = (mode: PeriodMode) => `?mode=${mode}&tab=${tab}`;
 
   return (
     <Shell active="analytics" title="Analytics">
@@ -90,24 +83,16 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
           <div style={{ display: "flex", gap: 6 }}>
             <Link className={`btn sm ${period.mode === "quarter" ? "primary" : "ghost"}`} href={modeHref("quarter")}>Quarter</Link>
             <Link className={`btn sm ${period.mode === "year" ? "primary" : "ghost"}`} href={modeHref("year")}>Year</Link>
-            <Link className={`btn sm ${period.mode === "custom" ? "primary" : "ghost"}`} href={modeHref("custom")}>Custom</Link>
           </div>
-          {period.mode !== "custom" ? (
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <Link className="btn sm ghost" href={period.prevHref} aria-label="Previous period">‹</Link>
-              <div style={{ fontSize: 13.5, fontWeight: 650, minWidth: 90, textAlign: "center" }}>{period.label}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Link className="btn sm ghost" href={period.prevHref} aria-label="Previous period">‹</Link>
+            <div style={{ fontSize: 13.5, fontWeight: 650, minWidth: 90, textAlign: "center" }}>{period.label}</div>
+            {period.nextHref ? (
               <Link className="btn sm ghost" href={period.nextHref} aria-label="Next period">›</Link>
-            </div>
-          ) : (
-            <form method="GET" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <input type="hidden" name="mode" value="custom" />
-              <input type="hidden" name="tab" value={tab} />
-              <input type="date" name="from" defaultValue={period.fromInput} className="tnum" style={inputStyle} />
-              <span className="sub">to</span>
-              <input type="date" name="to" defaultValue={period.toInput} className="tnum" style={inputStyle} />
-              <button className="btn sm primary" type="submit">Apply</button>
-            </form>
-          )}
+            ) : (
+              <span className="btn sm ghost" aria-disabled="true" style={{ opacity: 0.4, cursor: "default", pointerEvents: "none" }}>›</span>
+            )}
+          </div>
           <span className="sub" style={{ marginLeft: "auto" }}>{period.rangeLabel}</span>
         </div>
       </div>
@@ -138,16 +123,16 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
           <div className="an-section">
             <SectionHeader
               title="Vendor Pipeline"
-              help={`Where the cohort invited in ${period.label} is today, and what the in-flight pipeline is likely to convert to.`}
+              help={`Where vendors invited in ${period.label} are today, and what the in-flight pipeline is likely to convert to.`}
             />
-            <ChartCard title="Onboarding funnel" sub={`Cohort invited in ${period.label} · conversion and drop-off by stage`}>
+            <ChartCard title="Onboarding funnel" sub={`Vendors invited in ${period.label} · conversion and drop-off by stage`}>
               {funnel.stages[0].count === 0 ? (
                 <Empty title="No vendors invited in this period" hint="Pick a wider range to see the funnel." />
               ) : (
                 <>
                   <FunnelBars stages={funnel.stages} />
                   <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14, alignItems: "center", fontSize: 12.5 }}>
-                    <span className="sub">Rejected (of cohort):</span>
+                    <span className="sub">Rejected (of those invited):</span>
                     <span className="tnum" style={{ fontWeight: 700, color: funnel.rejected ? "var(--bad)" : "var(--ink-faint)" }}>{funnel.rejected}</span>
                   </div>
                 </>

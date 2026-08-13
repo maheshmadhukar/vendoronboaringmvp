@@ -1,6 +1,6 @@
-// Date-range resolution for the analytics period filter (quarter / year / custom).
+// Date-range resolution for the analytics period filter (quarter / year).
 
-export type PeriodMode = "quarter" | "year" | "custom";
+export type PeriodMode = "quarter" | "year";
 
 export function quarterOf(date: Date): number {
   return Math.floor(date.getMonth() / 3) + 1;
@@ -23,8 +23,8 @@ export type ResolvedPeriod = {
   to: Date;
   label: string;
   rangeLabel: string;
-  fromInput: string; // yyyy-mm-dd, for prefilling the custom-range form
-  toInput: string;
+  /** True when this is the current quarter/year — there is no later period to navigate to. */
+  atLatest: boolean;
   prevHref: string;
   nextHref: string;
 };
@@ -33,55 +33,46 @@ function fmtShort(d: Date) {
   return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-function toInputDate(d: Date) {
-  return d.toISOString().slice(0, 10);
-}
-
-export function resolvePeriod(sp: { mode?: string; y?: string; q?: string; from?: string; to?: string }): ResolvedPeriod {
+export function resolvePeriod(sp: { mode?: string; y?: string; q?: string }): ResolvedPeriod {
   const now = new Date();
-  const mode: PeriodMode = sp.mode === "year" ? "year" : sp.mode === "custom" ? "custom" : "quarter";
-
-  if (mode === "custom") {
-    const defaultFrom = quarterRange(now.getFullYear(), quarterOf(now)).from;
-    const from = sp.from ? new Date(sp.from + "T00:00:00") : defaultFrom;
-    const to = sp.to ? new Date(sp.to + "T23:59:59.999") : now;
-    return {
-      mode, from, to,
-      label: "Custom",
-      rangeLabel: `${fmtShort(from)} – ${fmtShort(to)}`,
-      fromInput: toInputDate(from), toInput: toInputDate(to),
-      prevHref: "", nextHref: "",
-    };
-  }
+  const mode: PeriodMode = sp.mode === "year" ? "year" : "quarter";
 
   if (mode === "year") {
-    const year = sp.y ? parseInt(sp.y, 10) : now.getFullYear();
+    const requestedYear = sp.y ? parseInt(sp.y, 10) : now.getFullYear();
+    const year = Math.min(requestedYear, now.getFullYear());
     const { from, to } = yearRange(year);
+    const atLatest = year >= now.getFullYear();
     return {
       mode, from, to,
       label: `${year}`,
       rangeLabel: `${fmtShort(from)} – ${fmtShort(to)}`,
-      fromInput: toInputDate(from), toInput: toInputDate(to),
+      atLatest,
       prevHref: `?mode=year&y=${year - 1}`,
-      nextHref: `?mode=year&y=${year + 1}`,
+      nextHref: atLatest ? "" : `?mode=year&y=${year + 1}`,
     };
   }
 
   // quarter (default)
-  const year = sp.y ? parseInt(sp.y, 10) : now.getFullYear();
-  const quarter = sp.q ? parseInt(sp.q, 10) : quarterOf(now);
+  const nowYear = now.getFullYear();
+  const nowQuarter = quarterOf(now);
+  const requestedYear = sp.y ? parseInt(sp.y, 10) : nowYear;
+  const requestedQuarter = sp.q ? parseInt(sp.q, 10) : nowQuarter;
+  const beyondNow = requestedYear > nowYear || (requestedYear === nowYear && requestedQuarter > nowQuarter);
+  const year = beyondNow ? nowYear : requestedYear;
+  const quarter = beyondNow ? nowQuarter : requestedQuarter;
   const { from, to } = quarterRange(year, quarter);
   const prevQ = quarter === 1 ? 4 : quarter - 1;
   const prevY = quarter === 1 ? year - 1 : year;
   const nextQ = quarter === 4 ? 1 : quarter + 1;
   const nextY = quarter === 4 ? year + 1 : year;
+  const atLatest = year === nowYear && quarter === nowQuarter;
   return {
     mode, from, to,
     label: `Q${quarter} ${year}`,
     rangeLabel: `${fmtShort(from)} – ${fmtShort(to)}`,
-    fromInput: toInputDate(from), toInput: toInputDate(to),
+    atLatest,
     prevHref: `?mode=quarter&y=${prevY}&q=${prevQ}`,
-    nextHref: `?mode=quarter&y=${nextY}&q=${nextQ}`,
+    nextHref: atLatest ? "" : `?mode=quarter&y=${nextY}&q=${nextQ}`,
   };
 }
 
