@@ -22,6 +22,15 @@ export async function loginAction(_prev: unknown, formData: FormData) {
   redirect(homeFor(user));
 }
 
+// Clears the one-shot "just logged in" flash flag (drives the dept SLA-breach
+// popup). Cookie writes are only allowed in a Server Action/Route Handler, so
+// this is called from a client effect rather than during the page's render.
+export async function consumeLoginFlash() {
+  const session = await getSession();
+  session.justLoggedIn = false;
+  await session.save();
+}
+
 export async function logoutAction() {
   await clearSession();
   redirect("/login");

@@ -9,6 +9,8 @@ export interface SessionData {
   userId?: string;
   /** Set while impersonating another persona via the demo switcher; the admin to return to. */
   demoAdminId?: string;
+  /** Flash flag: set on setSessionUser, consumed (cleared) by the first page that reads it. */
+  justLoggedIn?: boolean;
 }
 
 /** Demo persona switcher (top-right, admin-only) is inert unless DEMO_MODE=true. */
@@ -35,6 +37,7 @@ export async function getSession(): Promise<IronSession<SessionData>> {
 export async function setSessionUser(userId: string) {
   const session = await getSession();
   session.userId = userId;
+  session.justLoggedIn = true;
   await session.save();
 }
 

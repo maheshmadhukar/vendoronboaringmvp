@@ -5,7 +5,7 @@
   --brand:#7899D1;
   --accent:#E5834E; --accent-strong:#F0955F; --accent-fill:#2A2011; --accent-ink:#F0A876;
   --good:#5EA478; --good-bg:#16261D; --warn:#D9A441; --warn-bg:#2A2313; --due:#E5834E;
-  --bad:#D9695A; --bad-bg:#2A1815; --info:#6F97C9; --info-bg:#141F2E;
+  --bad:#D9695A; --bad-bg:#2A1815; --info:#6F97C9; --info-bg:#141F2E; --track:#4FA3A8;
   --neutral-bg:#141F29; --neutral-ink:#8A93A2;
   --radius:12px; --radius-sm:8px;
   --shadow-sm:0 1px 2px rgba(0,0,0,.4);
@@ -124,6 +124,9 @@ h1,h2,h3,h4{ margin:0; }
 .stat .delta{ font-size:11.5px; margin-top:4px; color:var(--ink-faint); }
 .stat-link{ display:block; text-decoration:none; color:inherit; cursor:pointer; transition:background .12s,border-color .12s; }
 .stat-link:hover{ background:var(--panel-2); border-color:var(--border-strong); text-decoration:none; }
+.stat-link.active{ border-color:var(--accent); background:var(--panel-2); }
+
+.row-dim{ opacity:.35; transition:opacity .15s ease; }
 
 /* Flash-highlight a card when navigated to via #anchor link */
 #pending-action:target{ animation:target-flash 1.6s ease-out; border-color:var(--accent); }

@@ -8,6 +8,8 @@ import { fmtDate, fmtMoney } from "@/lib/format";
 import { reviewSlaVisual, workingDaysLeft, isBreached } from "@/lib/sla";
 import { resolveDashboardRange } from "@/lib/period";
 import { resumeVendor } from "@/app/actions/admin";
+import { paginate } from "@/lib/paginate";
+import Pagination from "@/app/components/Pagination";
 import Spotlight from "./Spotlight";
 import RangeSelect from "./RangeSelect";
 
@@ -15,7 +17,9 @@ const SLA_DEPTS = DEPT_ORDER.filter((k) => k !== "PROCUREMENT");
 
 // Finer-grained color band for this cell only (the shared reviewSlaVisual
 // tone system elsewhere in the app stays 4-color) — splits "warn" into a
-// ≤2-days amber and a distinct "due today" light-orange.
+// ≤2-days amber and a distinct "due today" light-orange, and separates
+// "on track, still counting down" (teal) from "fully met/complete" (green)
+// so an in-progress-but-fine SLA isn't mistaken for a done/approved state.
 function slaDotColor(r: { slaDueAt: Date | null; slaState: string; everBreached: boolean }): string {
   if (r.everBreached || isBreached(r.slaDueAt, r.slaState)) return "var(--bad)";
   if (r.slaState === "MET") return "var(--good)";
@@ -24,7 +28,7 @@ function slaDotColor(r: { slaDueAt: Date | null; slaState: string; everBreached:
   if (dl == null) return "var(--ink-faint)";
   if (dl <= 0) return "var(--due)";
   if (dl <= 2) return "var(--warn)";
-  return "var(--good)";
+  return "var(--track)";
 }
 
 function SlaCell({
@@ -69,7 +73,7 @@ function StatLink({ href, label, value, valueColor }: { href: string; label: str
 }
 
 type VendorTab = "all" | "inprogress" | "onboarded" | "rejected";
-type SearchParams = { sort?: string; dir?: string; tab?: string; focus?: string; range?: string };
+type SearchParams = { sort?: string; dir?: string; tab?: string; focus?: string; range?: string; actionPage?: string; vendorsPage?: string };
 
 export default async function AdminDashboard({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const [, sp] = await Promise.all([requireAdmin(), searchParams]);
@@ -134,6 +138,8 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
   }
   const colCount = tab === "inprogress" ? 8 : 6;
   const spotlightKey = [sp.tab, sp.focus, sp.sort, sp.dir, sp.range].join("|");
+  const attentionPagination = paginate(attention, Number(sp.actionPage) || 1);
+  const tabbedPagination = paginate(tabbed, Number(sp.vendorsPage) || 1);
 
   return (
     <Shell active="dashboard" title="Status Dashboard">
@@ -167,7 +173,7 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
             <table className="table">
               <thead><tr><th>Vendor</th><th>Status</th><th>SLA</th><th>Why</th><th></th></tr></thead>
               <tbody>
-                {attention.map((v) => (
+                {attentionPagination.pageItems.map((v) => (
                   <tr key={v.id}>
                     <td className="strong">{v.name}</td>
                     <td><Chip tone={VSTATUS_TONE[v.status]}>{VSTATUS_LABEL[v.status]}</Chip></td>
@@ -181,6 +187,7 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
                 ))}
               </tbody>
             </table>
+            <Pagination paramKey="actionPage" page={attentionPagination.page} totalPages={attentionPagination.totalPages} />
           </div>
         )}
       </div>
@@ -217,7 +224,7 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
             <tbody>
               {tabbed.length === 0 ? (
                 <tr><td colSpan={colCount}><Empty title="No vendors here" hint="Nothing in this tab yet." /></td></tr>
-              ) : tabbed.map((v) => (
+              ) : tabbedPagination.pageItems.map((v) => (
                 <tr key={v.id}>
                   <td><div className="strong">{v.name}</div><div className="sub">{v.companyEmail ?? "—"}</div></td>
                   <td><Chip tone={VSTATUS_TONE[v.status]}>{VSTATUS_LABEL[v.status]}</Chip></td>
@@ -249,6 +256,9 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
               ))}
             </tbody>
           </table>
+          {tabbed.length > 0 ? (
+            <Pagination paramKey="vendorsPage" page={tabbedPagination.page} totalPages={tabbedPagination.totalPages} />
+          ) : null}
         </div>
       </div>
     </Shell>

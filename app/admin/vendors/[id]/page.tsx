@@ -12,9 +12,14 @@ import {
 import { fmtDate, fmtDateTime, fmtMoney } from "@/lib/format";
 import { reviewSlaVisual } from "@/lib/sla";
 import { haltVendor, resumeVendor, finalApprove } from "@/app/actions/admin";
+import { paginate } from "@/lib/paginate";
+import Pagination from "@/app/components/Pagination";
 
-export default async function AdminVendor({ params }: { params: Promise<{ id: string }> }) {
+type SearchParams = { auditPage?: string };
+
+export default async function AdminVendor({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<SearchParams> }) {
   const { id } = await params;
+  const sp = await searchParams;
   await requireAdmin(); // authorize before any data access (RBAC gate)
   // The three reads below are independent — run them in one parallel batch
   // instead of three serial round-trips to Turso.
@@ -28,9 +33,10 @@ export default async function AdminVendor({ params }: { params: Promise<{ id: st
         comments: { include: { author: true }, orderBy: { createdAt: "asc" } },
       },
     }),
-    prisma.auditLog.findMany({ where: { targetId: id }, orderBy: { createdAt: "desc" }, take: 10, include: { actor: true } }),
+    prisma.auditLog.findMany({ where: { targetId: id }, orderBy: { createdAt: "desc" }, include: { actor: true } }),
   ]);
   if (!vendor) redirect("/admin");
+  const logsPagination = paginate(logs, Number(sp.auditPage) || 1);
 
   const allApproved = vendor.deptReviews.length > 0 && vendor.deptReviews.every((r) => r.status === REVIEW_STATUS.APPROVED);
   const terminal = [VSTATUS.ONBOARDED, VSTATUS.REJECTED].includes(vendor.status as never);
@@ -166,12 +172,13 @@ export default async function AdminVendor({ params }: { params: Promise<{ id: st
       {logs.length > 0 ? (
         <div className="card card-pad" style={{ marginTop: 18 }}>
           <div className="section-label">Audit trail</div>
-          {logs.map((l) => (
+          {logsPagination.pageItems.map((l) => (
             <div className="notif" key={l.id}>
               <span>{l.action.replace(/_/g, " ")} — {l.actor?.name ?? "system"}{l.meta ? `: ${l.meta}` : ""}</span>
               <span className="when">{fmtDateTime(l.createdAt)}</span>
             </div>
           ))}
+          <Pagination paramKey="auditPage" page={logsPagination.page} totalPages={logsPagination.totalPages} />
         </div>
       ) : null}
     </Shell>

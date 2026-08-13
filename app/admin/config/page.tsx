@@ -4,18 +4,25 @@ import { prisma } from "@/lib/prisma";
 import { getConfig } from "@/lib/workflow";
 import { DEPT_LABEL } from "@/lib/constants";
 import { updateDocType, setDocumentTypeActive, setBuyerDocTemplateActive } from "@/app/actions/admin";
+import { paginate } from "@/lib/paginate";
+import Pagination from "@/app/components/Pagination";
 import ConfigForm from "./ConfigForm";
 import AddDocumentTypeForm from "./AddDocumentTypeForm";
 import BuyerDocTemplateFileCell from "./BuyerDocTemplateFileCell";
 
 const DOC_FORMATS = ["doc", "pdf", "jpeg"] as const;
 
-export default async function ConfigPage() {
+type SearchParams = { docTypesPage?: string; templatesPage?: string };
+
+export default async function ConfigPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   await requireAdmin();
+  const sp = await searchParams;
   const cfg = await getConfig();
   const depts = await prisma.department.findMany({ orderBy: { name: "asc" } });
   const docTypes = await prisma.documentType.findMany({ orderBy: { order: "asc" } });
   const buyerDocTemplates = await prisma.buyerDocTemplate.findMany({ orderBy: { order: "asc" } });
+  const docTypesPagination = paginate(docTypes, Number(sp.docTypesPage) || 1);
+  const templatesPagination = paginate(buyerDocTemplates, Number(sp.templatesPage) || 1);
 
   return (
     <Shell active="config" title="Configuration">
@@ -37,7 +44,7 @@ export default async function ConfigPage() {
           <table className="table">
             <thead><tr><th>Document</th><th>Routed to</th><th>Format</th><th>Max MB</th><th>Active</th><th></th></tr></thead>
             <tbody>
-              {docTypes.map((t) => (
+              {docTypesPagination.pageItems.map((t) => (
                 <tr key={t.id} style={t.active ? undefined : { opacity: 0.55 }}>
                   <td className="strong">{t.name}</td>
                   <td>{DEPT_LABEL[t.departmentKey] ?? t.departmentKey}</td>
@@ -63,6 +70,7 @@ export default async function ConfigPage() {
               ))}
             </tbody>
           </table>
+          <Pagination paramKey="docTypesPage" page={docTypesPagination.page} totalPages={docTypesPagination.totalPages} />
         </div>
         <div className="card-pad">
           <div className="section-label">Add a document type</div>
@@ -79,7 +87,7 @@ export default async function ConfigPage() {
           <table className="table">
             <thead><tr><th>Document</th><th>Routed to</th><th>File</th><th>Active</th><th></th></tr></thead>
             <tbody>
-              {buyerDocTemplates.map((t) => (
+              {templatesPagination.pageItems.map((t) => (
                 <tr key={t.id} style={t.active ? undefined : { opacity: 0.55 }}>
                   <td className="strong">{t.name}</td>
                   <td>{DEPT_LABEL[t.departmentKey] ?? t.departmentKey}</td>
@@ -96,6 +104,7 @@ export default async function ConfigPage() {
               ))}
             </tbody>
           </table>
+          <Pagination paramKey="templatesPage" page={templatesPagination.page} totalPages={templatesPagination.totalPages} />
         </div>
       </div>
     </Shell>

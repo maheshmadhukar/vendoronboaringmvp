@@ -4,16 +4,22 @@ import { requireAdmin } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { ROLE, DEPT, DEPT_LABEL, DEPT_ORDER } from "@/lib/constants";
 import { setUserActive } from "@/app/actions/admin";
+import { paginate } from "@/lib/paginate";
+import Pagination from "@/app/components/Pagination";
 import InviteVendorForm from "./InviteVendorForm";
 import EditManagerEmailForm from "./EditManagerEmailForm";
 
-export default async function AccessPage() {
+type SearchParams = { vendorsPage?: string };
+
+export default async function AccessPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   await requireAdmin();
+  const sp = await searchParams;
   const users = await prisma.user.findMany({ include: { department: true }, orderBy: [{ role: "asc" }, { name: "asc" }] });
   const depts = await prisma.department.findMany({ include: { users: true }, orderBy: { name: "asc" } });
   const buyerDocTemplates = await prisma.buyerDocTemplate.findMany({ where: { active: true }, orderBy: { order: "asc" } });
 
   const vendors = users.filter((u) => u.role === ROLE.VENDOR);
+  const vendorsPagination = paginate(vendors, Number(sp.vendorsPage) || 1);
 
   return (
     <Shell active="access" title="Access & Invites">
@@ -57,7 +63,7 @@ export default async function AccessPage() {
             <thead><tr><th>Vendor contact</th><th>Access</th><th></th></tr></thead>
             <tbody>
               {vendors.length === 0 ? <tr><td colSpan={3} className="muted">No vendor accounts yet.</td></tr> :
-                vendors.map((u) => (
+                vendorsPagination.pageItems.map((u) => (
                   <tr key={u.id}>
                     <td><div className="strong">{u.name}</div><div className="sub">{u.email}</div></td>
                     <td>{u.active ? <Chip tone="good">active</Chip> : <Chip tone="neutral">inactive</Chip>}</td>
@@ -72,6 +78,7 @@ export default async function AccessPage() {
                 ))}
             </tbody>
           </table>
+          <Pagination paramKey="vendorsPage" page={vendorsPagination.page} totalPages={vendorsPagination.totalPages} />
         </div>
       </div>
     </Shell>

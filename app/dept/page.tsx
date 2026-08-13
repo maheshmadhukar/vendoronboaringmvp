@@ -2,15 +2,25 @@ import Link from "next/link";
 import Shell from "@/app/components/Shell";
 import { Chip, Empty } from "@/app/components/ui";
 import RangeSelect from "@/app/admin/RangeSelect";
-import { requireDept } from "@/lib/session";
+import { requireDept, getSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { getConfig } from "@/lib/workflow";
 import { DEPT, DEPT_LABEL, REVIEW_STATUS, REVIEW_TONE, ROLE, VSTATUS } from "@/lib/constants";
 import { fmtDate } from "@/lib/format";
 import { isBreached, slaVisual, workingDaysLeft } from "@/lib/sla";
 import { resolveDashboardRange } from "@/lib/period";
+import { paginate } from "@/lib/paginate";
+import Pagination from "@/app/components/Pagination";
+import ScrollToActioned from "./ScrollToActioned";
+import SlaBreachPopup from "./SlaBreachPopup";
 
-type SearchParams = { range?: string };
+type SearchParams = {
+  range?: string;
+  highlight?: "pending" | "breached" | "actioned";
+  pendingPage?: string;
+  actionedPage?: string;
+  vendorsPage?: string;
+};
 
 export default async function DeptQueue({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const user = await requireDept();
@@ -19,6 +29,8 @@ export default async function DeptQueue({ searchParams }: { searchParams: Promis
   if (dept.key === DEPT.PROCUREMENT) {
     return <OnboardedVendors searchParams={searchParams} />;
   }
+
+  const sp = await searchParams;
 
   const [cfg, allReviews] = await Promise.all([
     getConfig(),
@@ -33,13 +45,20 @@ export default async function DeptQueue({ searchParams }: { searchParams: Promis
   const pending = reviews.filter((r) => r.status === REVIEW_STATUS.PENDING);
   const done = reviews.filter((r) => r.status !== REVIEW_STATUS.PENDING);
 
-  const breachedCount = pending.filter((r) => isBreached(r.slaDueAt, r.slaState)).length;
+  const breachedRows = pending.filter((r) => isBreached(r.slaDueAt, r.slaState));
+  const breachedCount = breachedRows.length;
   // Amber = within 2 days of the due date and not already breached — mirrors the warn threshold in lib/sla.ts.
   const amber = pending.filter((r) => {
     if (isBreached(r.slaDueAt, r.slaState)) return false;
     const dl = workingDaysLeft(r.slaDueAt);
     return dl != null && dl <= 2;
   });
+
+  const session = await getSession();
+  const justLoggedIn = !!session.justLoggedIn;
+
+  const pendingPagination = paginate(pending, Number(sp.pendingPage) || 1);
+  const donePagination = paginate(done, Number(sp.actionedPage) || 1);
 
   return (
     <Shell active={user.role === ROLE.ADMIN ? "procurement" : "queue"} title={`${DEPT_LABEL[dept.key]} — Review Queue`}>
@@ -59,10 +78,28 @@ export default async function DeptQueue({ searchParams }: { searchParams: Promis
         </div>
       ) : null}
 
+      <ScrollToActioned active={sp.highlight === "actioned"} />
+      <SlaBreachPopup justLoggedIn={justLoggedIn} vendorNames={breachedRows.map((r) => r.vendor.name)} />
+
       <div className="grid-3" style={{ marginBottom: 20 }}>
-        <div className="stat"><div className="label">Awaiting your review</div><div className="value">{pending.length}</div></div>
-        <div className="stat"><div className="label">SLA breached</div><div className="value" style={{ color: breachedCount ? "var(--bad)" : undefined }}>{breachedCount}</div></div>
-        <div className="stat"><div className="label">Actioned</div><div className="value">{done.length}</div></div>
+        <Link
+          href={sp.highlight === "pending" ? "?" : "?highlight=pending"}
+          className={`stat stat-link${sp.highlight === "pending" ? " active" : ""}`}
+        >
+          <div className="label">Awaiting your review</div><div className="value">{pending.length}</div>
+        </Link>
+        <Link
+          href={sp.highlight === "breached" ? "?" : "?highlight=breached"}
+          className={`stat stat-link${sp.highlight === "breached" ? " active" : ""}`}
+        >
+          <div className="label">SLA breached</div><div className="value" style={{ color: breachedCount ? "var(--bad)" : undefined }}>{breachedCount}</div>
+        </Link>
+        <Link
+          href={sp.highlight === "actioned" ? "?" : "?highlight=actioned"}
+          className={`stat stat-link${sp.highlight === "actioned" ? " active" : ""}`}
+        >
+          <div className="label">Actioned</div><div className="value">{done.length}</div>
+        </Link>
       </div>
 
       <div className="card">
@@ -74,10 +111,12 @@ export default async function DeptQueue({ searchParams }: { searchParams: Promis
             <table className="table">
               <thead><tr><th>Vendor</th><th>Submitted</th><th>SLA due</th>{cfg.aiReviewDefault ? <th>AI review</th> : null}<th>Status</th><th></th></tr></thead>
               <tbody>
-                {pending.map((r) => {
+                {pendingPagination.pageItems.map((r) => {
                   const sla = slaVisual(r.slaStartedAt, r.slaDueAt, r.slaState);
+                  const rowBreached = isBreached(r.slaDueAt, r.slaState);
+                  const dimmed = sp.highlight != null && !(sp.highlight === "pending" || (sp.highlight === "breached" && rowBreached));
                   return (
-                    <tr key={r.id}>
+                    <tr key={r.id} className={dimmed ? "row-dim" : undefined}>
                       <td><div className="strong">{r.vendor.name}</div><div className="sub">{r.vendor.category}</div></td>
                       <td className="tnum">{fmtDate(r.vendor.submittedAt)}</td>
                       <td className="tnum">
@@ -105,26 +144,31 @@ export default async function DeptQueue({ searchParams }: { searchParams: Promis
                 })}
               </tbody>
             </table>
+            <Pagination paramKey="pendingPage" page={pendingPagination.page} totalPages={pendingPagination.totalPages} />
           </div>
         )}
       </div>
 
       {done.length > 0 ? (
-        <div className="card" style={{ marginTop: 18 }}>
+        <div className="card" id="already-actioned" style={{ marginTop: 18 }}>
           <div className="card-pad" style={{ paddingBottom: 0 }}><div className="section-label">Already actioned</div></div>
           <div className="table-wrap">
             <table className="table">
               <thead><tr><th>Vendor</th><th>Decision</th><th></th></tr></thead>
               <tbody>
-                {done.map((r) => (
-                  <tr key={r.id}>
-                    <td className="strong">{r.vendor.name}</td>
-                    <td><Chip tone={REVIEW_TONE[r.status]}>{r.status.replace(/_/g, " ").toLowerCase()}</Chip></td>
-                    <td><Link className="btn sm" href={`/dept/review/${r.vendorId}`}>View</Link></td>
-                  </tr>
-                ))}
+                {donePagination.pageItems.map((r) => {
+                  const dimmed = sp.highlight != null && sp.highlight !== "actioned";
+                  return (
+                    <tr key={r.id} className={dimmed ? "row-dim" : undefined}>
+                      <td className="strong">{r.vendor.name}</td>
+                      <td><Chip tone={REVIEW_TONE[r.status]}>{r.status.replace(/_/g, " ").toLowerCase()}</Chip></td>
+                      <td><Link className="btn sm" href={`/dept/review/${r.vendorId}`}>View</Link></td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
+            <Pagination paramKey="actionedPage" page={donePagination.page} totalPages={donePagination.totalPages} />
           </div>
         </div>
       ) : null}
@@ -140,6 +184,7 @@ async function OnboardedVendors({ searchParams }: { searchParams: Promise<Search
     where: { status: VSTATUS.ONBOARDED, onboardedAt: { gte: from, lte: new Date() } },
     orderBy: { onboardedAt: "desc" },
   });
+  const vendorsPagination = paginate(vendors, Number(sp.vendorsPage) || 1);
 
   return (
     <Shell active="procurement" title="Procurement — Onboarded Vendors">
@@ -159,7 +204,7 @@ async function OnboardedVendors({ searchParams }: { searchParams: Promise<Search
             <table className="table">
               <thead><tr><th>Vendor</th><th>Category</th><th>Onboarded</th><th></th></tr></thead>
               <tbody>
-                {vendors.map((v) => (
+                {vendorsPagination.pageItems.map((v) => (
                   <tr key={v.id}>
                     <td className="strong">{v.name}</td>
                     <td className="sub">{v.category}</td>
@@ -169,6 +214,7 @@ async function OnboardedVendors({ searchParams }: { searchParams: Promise<Search
                 ))}
               </tbody>
             </table>
+            <Pagination paramKey="vendorsPage" page={vendorsPagination.page} totalPages={vendorsPagination.totalPages} />
           </div>
         )}
       </div>
