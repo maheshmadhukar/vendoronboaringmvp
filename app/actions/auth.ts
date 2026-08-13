@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
-import { homeFor, getCurrentUser, isImpersonating, isDemoModeEnabled, DEMO_COOKIE } from "@/lib/session";
+import { homeFor, getCurrentUser, isImpersonating, isDemoModeEnabled, DEMO_COOKIE, setLoginFlash, clearLoginFlash } from "@/lib/session";
 import { ROLE } from "@/lib/constants";
 
 export async function loginAction(_prev: unknown, formData: FormData) {
@@ -23,7 +23,16 @@ export async function loginAction(_prev: unknown, formData: FormData) {
     return { error: "Invalid credentials or inactive account." };
   }
 
+  // One-shot flash so the dept SLA-breach popup fires once on the landing page.
+  await setLoginFlash();
   redirect(homeFor(user));
+}
+
+// Clears the one-shot "just logged in" flash flag (drives the dept SLA-breach
+// popup). Cookie writes are only allowed in a Server Action/Route Handler, so
+// this is called from a client effect rather than during the page's render.
+export async function consumeLoginFlash() {
+  await clearLoginFlash();
 }
 
 export async function logoutAction() {

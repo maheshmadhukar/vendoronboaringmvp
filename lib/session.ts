@@ -13,6 +13,27 @@ export function isDemoModeEnabled(): boolean {
 /** Cookie holding the impersonated user id while an admin uses the demo switcher. */
 export const DEMO_COOKIE = "vms_demo";
 
+// One-shot "just logged in" flash. Replaces the old iron-session `justLoggedIn`
+// flag (removed with the Supabase Auth migration): set on login, read once by
+// the dept SLA-breach popup, then cleared. A plain cookie, since Supabase owns
+// the real session now.
+const LOGIN_FLASH_COOKIE = "vms_flash_login";
+
+export async function setLoginFlash() {
+  const store = await cookies();
+  store.set(LOGIN_FLASH_COOKIE, "1", { httpOnly: true, sameSite: "lax", path: "/" });
+}
+
+export async function getLoginFlash(): Promise<boolean> {
+  const store = await cookies();
+  return store.get(LOGIN_FLASH_COOKIE)?.value === "1";
+}
+
+export async function clearLoginFlash() {
+  const store = await cookies();
+  store.delete(LOGIN_FLASH_COOKIE);
+}
+
 const userInclude = {
   department: true,
   vendor: true,

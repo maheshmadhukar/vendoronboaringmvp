@@ -3,11 +3,16 @@
 // aggregate SQL later means re-implementing these signatures, nothing else.
 
 import type { Vendor, DeptReview, Department, Document, DocumentType, Comment } from "@prisma/client";
-import { VSTATUS, REVIEW_STATUS, DOC_STATUS, DEPT_ORDER, DEPT_LABEL, REJECTION_REASON_ORDER, REJECTION_REASON_LABEL } from "./constants";
+import { VSTATUS, REVIEW_STATUS, DOC_STATUS, DEPT, DEPT_ORDER, DEPT_LABEL, REJECTION_REASON_ORDER, REJECTION_REASON_LABEL } from "./constants";
 import { isBreached, workingDaysLeft } from "./sla";
 import { inRange } from "./period";
 
 const DAY = 864e5;
+
+// Procurement has no standalone review queue (Admin acts as its reviewer) — it's
+// excluded from department-level analytics breakdowns and KPI totals, mirroring
+// app/admin/page.tsx's SLA_DEPTS precedent.
+const REVIEW_DEPT_ORDER = DEPT_ORDER.filter((k) => k !== DEPT.PROCUREMENT);
 
 export type ReviewWithDept = DeptReview & { department: Department };
 export type DocWithType = Document & { documentType: DocumentType };
@@ -63,10 +68,11 @@ export function computeExecutive(vendors: VendorRow[], period: Range, prev: Rang
   const pipelineValue = valOf(active);
   const pendingApprovals = vendors
     .filter((v) => v.status !== VSTATUS.HALTED)
-    .reduce((s, v) => s + v.deptReviews.filter((r) => r.status === REVIEW_STATUS.PENDING).length, 0);
+    .reduce((s, v) => s + v.deptReviews.filter((r) => r.department.key !== DEPT.PROCUREMENT && r.status === REVIEW_STATUS.PENDING).length, 0);
   const atRisk = vendors.filter((v) =>
     v.status !== VSTATUS.HALTED &&
     v.deptReviews.some((r) => {
+      if (r.department.key === DEPT.PROCUREMENT) return false;
       if (r.status !== REVIEW_STATUS.PENDING) return false;
       if (r.everBreached || isBreached(r.slaDueAt, r.slaState)) return true;
       const dl = workingDaysLeft(r.slaDueAt);
@@ -135,7 +141,7 @@ export function computePipelineHealth(vendors: VendorRow[]) {
   const acceptRate = settled.length ? accepted / settled.length : null;
   const projectedApprovals = acceptRate != null ? Math.round(active.length * acceptRate) : null;
   const atRiskCount = active.filter((v) =>
-    v.deptReviews.some((r) => r.status === REVIEW_STATUS.PENDING && (r.everBreached || isBreached(r.slaDueAt, r.slaState)))
+    v.deptReviews.some((r) => r.department.key !== DEPT.PROCUREMENT && r.status === REVIEW_STATUS.PENDING && (r.everBreached || isBreached(r.slaDueAt, r.slaState)))
   ).length;
   return {
     active: active.length,
@@ -159,7 +165,7 @@ export function computeDeptBottlenecks(vendors: VendorRow[], departments: Depart
     .flatMap((v) => v.deptReviews);
   const now = Date.now();
 
-  const speed: DeptSpeed[] = DEPT_ORDER.map((key) => {
+  const speed: DeptSpeed[] = REVIEW_DEPT_ORDER.map((key) => {
     const dept = departments.find((d) => d.key === key);
     const slaDays = dept?.slaDays ?? 5;
     // Decisions *made* in the period (by decidedAt) — recent submissions are
@@ -174,7 +180,7 @@ export function computeDeptBottlenecks(vendors: VendorRow[], departments: Depart
     return { key, label: DEPT_LABEL[key], avgDays, slaDays, overSla: avgDays != null && avgDays > slaDays, decided: decided.length };
   });
 
-  const queue: DeptQueue[] = DEPT_ORDER.map((key) => {
+  const queue: DeptQueue[] = REVIEW_DEPT_ORDER.map((key) => {
     const pending = allReviews.filter((r) => r.department.key === key && r.status === REVIEW_STATUS.PENDING);
     const ages = pending.map((r) => (r.slaStartedAt ? Math.max(0, (now - r.slaStartedAt.getTime()) / DAY) : null)).filter((n): n is number => n != null);
     const overSla = pending.filter((r) => r.everBreached || isBreached(r.slaDueAt, r.slaState)).length;
@@ -307,7 +313,7 @@ export function computeTrends(vendors: VendorRow[], months = 12): TrendPoint[] {
 }
 
 /**
- * Where time is spent. Vendor preparation is sequential; the four department
+ * Where time is spent. Vendor preparation is sequential; the three department
  * reviews run in PARALLEL (all SLA clocks start at submit), so they are NOT
  * summed — we report each department's average duration plus the critical-path
  * (max) review time, which is what actually gates onboarding.
@@ -316,7 +322,7 @@ export function computeStageTime(vendors: VendorRow[], departments: Department[]
   const onboarded = vendors.filter((v) => v.status === VSTATUS.ONBOARDED);
   const prep = avg(onboarded.map((v) => daysBetween(v.submittedAt, v.onboardingStartedAt)).filter((n): n is number => n != null && n >= 0));
 
-  const perDept = DEPT_ORDER.map((key) => {
+  const perDept = REVIEW_DEPT_ORDER.map((key) => {
     const durations = onboarded.flatMap((v) =>
       v.deptReviews.filter((r) => r.department.key === key && r.decidedAt != null)
         .map((r) => daysBetween(r.decidedAt, r.slaStartedAt))
@@ -327,7 +333,10 @@ export function computeStageTime(vendors: VendorRow[], departments: Department[]
 
   // Critical path = average of each vendor's slowest department review.
   const criticalPath = avg(onboarded.map((v) => {
-    const durs = v.deptReviews.map((r) => daysBetween(r.decidedAt, r.slaStartedAt)).filter((n): n is number => n != null && n >= 0);
+    const durs = v.deptReviews
+      .filter((r) => r.department.key !== DEPT.PROCUREMENT)
+      .map((r) => daysBetween(r.decidedAt, r.slaStartedAt))
+      .filter((n): n is number => n != null && n >= 0);
     return durs.length ? Math.max(...durs) : null;
   }).filter((n): n is number => n != null));
 

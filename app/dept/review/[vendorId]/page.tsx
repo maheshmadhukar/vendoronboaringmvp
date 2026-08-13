@@ -11,10 +11,15 @@ import {
 import { fmtDate, fmtDateTime, fmtMoney } from "@/lib/format";
 import { slaVisual } from "@/lib/sla";
 import { getBuyerCoveredKeys } from "@/lib/vendor";
+import { paginate } from "@/lib/paginate";
+import Pagination from "@/app/components/Pagination";
 import DocumentReviewRow from "./DocumentReviewRow";
 
-export default async function ReviewPage({ params }: { params: Promise<{ vendorId: string }> }) {
+type SearchParams = { commentsPage?: string };
+
+export default async function ReviewPage({ params, searchParams }: { params: Promise<{ vendorId: string }>; searchParams: Promise<SearchParams> }) {
   const { vendorId } = await params;
+  const sp = await searchParams;
   const user = await requireDept();
   const dept = user.department!;
 
@@ -48,6 +53,7 @@ export default async function ReviewPage({ params }: { params: Promise<{ vendorI
 
   const halted = vendor.status === VSTATUS.HALTED;
   const sla = slaVisual(review.slaStartedAt, review.slaDueAt, review.slaState);
+  const commentsPagination = paginate(vendor.comments, Number(sp.commentsPage) || 1);
 
   return (
     <Shell
@@ -136,13 +142,14 @@ export default async function ReviewPage({ params }: { params: Promise<{ vendorI
       {vendor.comments.length > 0 ? (
         <div className="card card-pad" style={{ marginTop: 18 }}>
           <div className="section-label">Comments &amp; clarifications</div>
-          {vendor.comments.map((c) => (
+          {commentsPagination.pageItems.map((c) => (
             <div className="comment" key={c.id}>
               <div className="who2">{c.author.name} <span className="role">· {c.kind.toLowerCase()}</span></div>
               <div className="when">{fmtDateTime(c.createdAt)}</div>
               <div className="body">{c.body}</div>
             </div>
           ))}
+          <Pagination paramKey="commentsPage" page={commentsPagination.page} totalPages={commentsPagination.totalPages} />
         </div>
       ) : null}
     </Shell>

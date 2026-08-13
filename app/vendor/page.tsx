@@ -10,13 +10,19 @@ import {
 } from "@/lib/constants";
 import { fmtDate, fmtDateTime } from "@/lib/format";
 import { slaVisual } from "@/lib/sla";
+import { paginate } from "@/lib/paginate";
+import Pagination from "@/app/components/Pagination";
 import ReplyForm from "./ReplyForm";
 import DocUploadRow from "./documents/DocUploadRow";
 
-export default async function VendorOverview() {
+type SearchParams = { commentsPage?: string };
+
+export default async function VendorOverview({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const user = await requireVendor();
+  const sp = await searchParams;
   const vendor = await getVendorFull(user.vendorId!);
   if (!vendor) return null;
+  const commentsPagination = paginate(vendor.comments, Number(sp.commentsPage) || 1);
 
   const preSubmit = vendor.status === VSTATUS.DRAFT || vendor.status === VSTATUS.INVITED;
   const openClarification = openClarificationDocIds(vendor.comments);
@@ -116,13 +122,14 @@ export default async function VendorOverview() {
       {vendor.comments.length > 0 ? (
         <div className="card card-pad" style={{ marginTop: 18 }}>
           <div className="section-label">Clarification history</div>
-          {vendor.comments.map((c) => (
+          {commentsPagination.pageItems.map((c) => (
             <div className="comment" key={c.id}>
               <div className="who2">{c.author.name} <span className="role">· {c.kind.toLowerCase()}</span></div>
               <div className="when">{fmtDateTime(c.createdAt)}</div>
               <div className="body">{c.body}</div>
             </div>
           ))}
+          <Pagination paramKey="commentsPage" page={commentsPagination.page} totalPages={commentsPagination.totalPages} />
           <ReplyForm departmentId={vendor.comments[vendor.comments.length - 1].departmentId} />
         </div>
       ) : null}
