@@ -37,7 +37,6 @@ async function main() {
   await prisma.comment.deleteMany();
   await prisma.document.deleteMany();
   await prisma.deptReview.deleteMany();
-  await prisma.otpCode.deleteMany();
   await prisma.invite.deleteMany();
   await prisma.vendorBuyerDoc.deleteMany();
   await prisma.user.deleteMany();
@@ -580,6 +579,10 @@ async function main() {
       data: { userId: financeMgr.id, message: "New vendor 'Northline Steel Components' is awaiting your Finance review.", kind: "TASK" },
     });
 
+  // Create Supabase Auth identities for every login-capable account and link
+  // them via User.authUserId (all demo logins share password demo1234).
+  await seedAuthUsers();
+
   // Upload real placeholder files to Supabase Storage for a few showcase
   // vendors so the document viewers render actual files end-to-end. The rest of
   // the seeded documents remain "legacy" records (no stored bytes) by design.
@@ -595,6 +598,35 @@ async function main() {
   console.log("  Vendor          karan@anugrahfreight.in");
   console.log("  (Procurement has no login — sign in as Admin and use the Procurement Review nav link)");
   console.log(`\nInvite/OTP signup demo: /invite/${inviteToken}\n`);
+}
+
+/**
+ * Reset Supabase Auth and create one auth user per app User, linking authUserId.
+ * All demo accounts share the password `demo1234`.
+ */
+async function seedAuthUsers() {
+  const { createClient } = await import("@supabase/supabase-js");
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) {
+    console.warn("⚠️  Skipping auth users — Supabase env not set.");
+    return;
+  }
+  const auth = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } }).auth.admin;
+
+  // Clear any pre-existing auth users (from earlier runs) for a clean reset.
+  const { data: existing } = await auth.listUsers({ perPage: 1000 });
+  for (const u of existing?.users ?? []) await auth.deleteUser(u.id);
+
+  const users = await prisma.user.findMany();
+  let count = 0;
+  for (const u of users) {
+    const { data, error } = await auth.createUser({ email: u.email, password: PW, email_confirm: true });
+    if (error || !data.user) { console.warn(`  auth user failed (${u.email}): ${error?.message}`); continue; }
+    await prisma.user.update({ where: { id: u.id }, data: { authUserId: data.user.id } });
+    count++;
+  }
+  console.log(`🔑 Created ${count} Supabase Auth users (password: ${PW}).`);
 }
 
 /** Build a minimal, valid single-page PDF with the given text lines. */

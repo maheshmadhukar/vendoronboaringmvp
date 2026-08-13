@@ -4,11 +4,21 @@ Running log of debugging/perf work, separate from `SCOPE_NOTES.md` (which covers
 
 ---
 
-## 2026-08-13 — Supabase migration (Phases 0–2 of 7) — branch `supabase-changes`
+## 2026-08-13 — Supabase migration (Phases 0–3 of 7) — branch `supabase-changes`
 
-**Status:** Phases 0, 1, 2 built + verified (build green, 29 tests green, storage round-trip
-verified). **Uncommitted work pushed to branch `supabase-changes`.** Auth/Email/Realtime/AI
-(Phases 3–6) + cutover (7) still to do. Full plan lives in the approved milestone plan.
+**Status:** Phases 0, 1, 2, 3 built + verified (build green, 29 tests green, storage round-trip
+verified, auth wiring verified, **full browser walkthrough passed**). Work committed + pushed to
+branch `supabase-changes`. Email/Realtime/AI (Phases 4–6) + cutover (7) still to do. Full plan
+lives in the approved milestone plan.
+
+**Resume checklist (next session):**
+- Branch is `supabase-changes` (NOT main). `.env` holds live Supabase creds (git-ignored).
+- Seeds must run over the direct connection (already handled by `prisma/seedClient.ts`); a full
+  reseed takes several minutes (network round-trips to ap-south-1).
+- Next up: **Phase 4 (Email)** — Supabase Auth SMTP (Resend) for auth mail + `lib/email.ts`
+  hooked into `notify()` in `lib/workflow.ts`, gated by `Config.notify*`. Needs `RESEND_API_KEY`.
+- Deferred cleanup (Phase 7): uninstall unused `iron-session`; drop legacy `passwordHash`
+  column + bcrypt from seed; update `README.md` / `SCOPE_NOTES.md`.
 
 **Decisions (from the user):** keep Prisma (repoint to Supabase Postgres, not a supabase-js
 rewrite); adopt Supabase Auth; upgrade Storage + Email + Realtime + AI; drop & reseed.
@@ -58,10 +68,32 @@ real files for everything else. Seed real placeholder files for **3 showcase ven
   template. Bucket `vendor-docs` created (private). Region `ap-south-1` (matches Vercel `bom1`).
 - To run locally: restart any stale pre-migration `next dev`, then `npm run dev`.
 
-### Next
-- **Phase 3 (Auth)** is next and highest-risk (replaces iron-session/bcrypt/OTP, reworks the
-  `lib/session.ts` RBAC guards + demo persona switcher, maps `auth.users` → `User.authUserId`).
-  Paused for user go-ahead per agreed one-phase-at-a-time cadence.
+### Phase 3 — Supabase Auth
+- **Identity now comes from Supabase Auth.** `lib/session.ts` `getSessionUser()` reads
+  `supabase.auth.getUser()` → app `User` by new **`User.authUserId`** (email fallback that
+  self-heals the link). All RBAC guard **signatures unchanged** (`requireAdmin/Vendor/Dept`).
+- New SSR plumbing: `lib/supabase/server.ts` (cookie-bound client), `lib/supabase/admin.ts`
+  (service-role, for createUser), `lib/supabase/proxy.ts` + root **`proxy.ts`** — ⚠️ Next 16
+  renamed `middleware` → **`proxy`** (same contract; `proxy`/`middleware`/`default` exports all
+  accepted). proxy refreshes the session cookie each request.
+- `app/actions/auth.ts`: login → `signInWithPassword`, logout → `signOut`. Invite
+  (`app/actions/invite.ts`) → `acceptInviteAction` creates a Supabase auth user + password and
+  signs in; **custom OTP removed** (`OtpCode` model dropped, `verify` route + `VerifyForm`
+  deleted, bcrypt off the auth path).
+- **Demo persona switcher** re-done as a `DEMO_MODE`-only cookie (`vms_demo`) honored by
+  `getCurrentUser` only when the real session is admin (`lib/session.ts` `isImpersonating`,
+  `switchPersonaAction`/`returnToAdminAction`). `Shell.tsx` updated (no more iron-session).
+- **Seed** creates a Supabase auth user per app User (all `demo1234`) and links `authUserId`
+  (`seedAuthUsers()` in `prisma/seed.ts`); it first clears existing auth.users for a clean reset.
+- Schema pushed (`authUserId` unique, `OtpCode` dropped). `@supabase/ssr` + `@supabase/supabase-js`
+  installed.
+
+### Browser verification (Phases 1–3, localhost:3000)
+Admin login → `/admin` dashboard (Supabase SSR cookie) ✓ · real PAN PDF renders via signed URL
+✓ · SLA shows rich clause view (hybrid) ✓ · logout clears session → `/login` ✓ · protected route
+after logout bounces to `/login` ✓ · vendor login → `/vendor` ✓ · **RBAC** vendor→`/admin` blocked
+→ `/unauthorized` ✓. (DEMO_MODE persona switcher not exercised — off in `.env`; tested real logins
+for all personas instead.)
 
 ## 2026-08-13 — Procurement Review rebuild, SLA bar fixes, flag-to-admin removal, merge with analytics PR
 

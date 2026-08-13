@@ -1,9 +1,9 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
-import { setSessionUser } from "@/lib/session";
+import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { ROLE, VSTATUS } from "@/lib/constants";
 
 async function validInvite(token: string) {
@@ -14,7 +14,10 @@ async function validInvite(token: string) {
   return invite;
 }
 
-export async function requestOtpAction(_prev: unknown, formData: FormData) {
+// Accept an invite: create the Supabase Auth user with the chosen password,
+// link/activate the app account, consume the invite, and sign the vendor in.
+// (Supabase owns credentials now — no custom OTP, no bcrypt.)
+export async function acceptInviteAction(_prev: unknown, formData: FormData) {
   const token = String(formData.get("token") || "");
   const password = String(formData.get("password") || "");
   const confirm = String(formData.get("confirm") || "");
@@ -25,57 +28,38 @@ export async function requestOtpAction(_prev: unknown, formData: FormData) {
   if (password !== confirm) return { error: "Passwords do not match." };
 
   const email = invite.email.toLowerCase();
-  const passwordHash = await bcrypt.hash(password, 10);
 
-  // Create/update the (inactive) vendor account tied to the invited vendor.
+  // Create the Supabase auth identity (email pre-confirmed — the invite link is
+  // the proof of email ownership).
+  const admin = createAdminClient();
+  const { data: created, error: createErr } = await admin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+  });
+  if (createErr || !created.user) {
+    return { error: "Could not create your account. This email may already be registered — try signing in." };
+  }
+  const authUserId = created.user.id;
+
+  // Create/update the app account tied to the invited vendor and activate it.
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
-    await prisma.user.update({ where: { id: existing.id }, data: { passwordHash, active: false } });
+    await prisma.user.update({ where: { id: existing.id }, data: { authUserId, active: true } });
   } else {
     await prisma.user.create({
       data: {
         email,
         name: email.split("@")[0],
         role: ROLE.VENDOR,
-        passwordHash,
-        active: false,
+        authUserId,
+        active: true,
         vendorId: invite.vendorId,
       },
     });
   }
 
-  const code = String(Math.floor(100000 + Math.random() * 900000));
-  await prisma.otpCode.create({
-    data: { email, code, purpose: "SIGNUP", expiresAt: new Date(Date.now() + 10 * 60 * 1000) },
-  });
-
-  redirect(`/invite/${token}/verify`);
-}
-
-export async function verifyOtpAction(_prev: unknown, formData: FormData) {
-  const token = String(formData.get("token") || "");
-  const code = String(formData.get("code") || "").trim();
-
-  const invite = await validInvite(token);
-  if (!invite) return { error: "This invite link is invalid or has expired." };
-
-  const email = invite.email.toLowerCase();
-  const otp = await prisma.otpCode.findFirst({
-    where: { email, purpose: "SIGNUP", consumedAt: null },
-    orderBy: { createdAt: "desc" },
-  });
-  if (!otp || otp.expiresAt.getTime() < Date.now())
-    return { error: "The code has expired. Go back and request a new one." };
-  if (otp.code !== code) return { error: "Incorrect code. Check the code shown below." };
-
-  const user = await prisma.user.findUnique({ where: { email } });
-  if (!user) return { error: "Account not found. Restart the invite." };
-
-  await prisma.$transaction([
-    prisma.user.update({ where: { id: user.id }, data: { active: true } }),
-    prisma.otpCode.update({ where: { id: otp.id }, data: { consumedAt: new Date() } }),
-    prisma.invite.update({ where: { id: invite.id }, data: { consumedAt: new Date() } }),
-  ]);
+  await prisma.invite.update({ where: { id: invite.id }, data: { consumedAt: new Date() } });
 
   if (invite.vendorId) {
     const vendor = await prisma.vendor.findUnique({ where: { id: invite.vendorId } });
@@ -87,6 +71,10 @@ export async function verifyOtpAction(_prev: unknown, formData: FormData) {
     }
   }
 
-  await setSessionUser(user.id);
+  // Sign in (sets the session cookies) and land on the vendor workspace.
+  const supabase = await createClient();
+  const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
+  if (signInErr) redirect("/login");
+
   redirect("/vendor");
 }

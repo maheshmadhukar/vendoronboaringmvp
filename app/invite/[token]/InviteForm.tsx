@@ -1,10 +1,10 @@
 "use client";
 
 import { useActionState } from "react";
-import { requestOtpAction } from "@/app/actions/invite";
+import { acceptInviteAction } from "@/app/actions/invite";
 
 export default function InviteForm({ token }: { token: string }) {
-  const [state, action, pending] = useActionState(requestOtpAction, null as { error?: string } | null);
+  const [state, action, pending] = useActionState(acceptInviteAction, null as { error?: string } | null);
   return (
     <form action={action}>
       <input type="hidden" name="token" value={token} />
@@ -18,7 +18,7 @@ export default function InviteForm({ token }: { token: string }) {
       </div>
       {state?.error ? <div className="alert bad" style={{ marginBottom: 14 }}>{state.error}</div> : null}
       <button className="btn primary" style={{ width: "100%" }} disabled={pending}>
-        {pending ? "Sending code…" : "Continue — send OTP"}
+        {pending ? "Creating account…" : "Create account & continue"}
       </button>
     </form>
   );

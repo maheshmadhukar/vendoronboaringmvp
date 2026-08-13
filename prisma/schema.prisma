@@ -29,7 +29,8 @@ model User {
   id           String   @id @default(cuid())
   email        String   @unique
   name         String
-  passwordHash String?
+  passwordHash String?  // legacy (pre-Supabase-Auth); unused at runtime
+  authUserId   String?  @unique // Supabase auth.users id — the identity link
   role         String   // ADMIN | DEPT | VENDOR
   active       Boolean  @default(true)
   departmentId String?
@@ -90,18 +91,6 @@ model Invite {
   expiresAt   DateTime
   consumedAt  DateTime?
   createdAt   DateTime  @default(now())
-}
-
-model OtpCode {
-  id         String    @id @default(cuid())
-  email      String
-  code       String
-  purpose    String    @default("SIGNUP")
-  expiresAt  DateTime
-  consumedAt DateTime?
-  createdAt  DateTime  @default(now())
-
-  @@index([email])
 }
 
 model DocumentType {

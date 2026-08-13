@@ -35,8 +35,8 @@ export default async function InvitePage({
           <>
             <h1>Set up your account</h1>
             <p className="sub">
-              Invited as <b>{invite!.email}</b>. Create a password — we&apos;ll
-              send a one-time code to verify.
+              Invited as <b>{invite!.email}</b>. Create a password to activate
+              your account.
             </p>
             <InviteForm token={token} />
           </>

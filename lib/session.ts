@@ -1,66 +1,70 @@
 import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { getIronSession, type IronSession } from "iron-session";
 import { prisma } from "./prisma";
+import { createClient } from "./supabase/server";
 import { ROLE, DEPT } from "./constants";
-
-export interface SessionData {
-  userId?: string;
-  /** Set while impersonating another persona via the demo switcher; the admin to return to. */
-  demoAdminId?: string;
-}
 
 /** Demo persona switcher (top-right, admin-only) is inert unless DEMO_MODE=true. */
 export function isDemoModeEnabled(): boolean {
   return process.env.DEMO_MODE === "true";
 }
 
-export const sessionOptions = {
-  password: process.env.SESSION_SECRET as string,
-  cookieName: "vms_session",
-  cookieOptions: {
-    httpOnly: true,
-    sameSite: "lax" as const,
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-  },
-};
+/** Cookie holding the impersonated user id while an admin uses the demo switcher. */
+export const DEMO_COOKIE = "vms_demo";
 
-export async function getSession(): Promise<IronSession<SessionData>> {
+const userInclude = {
+  department: true,
+  vendor: true,
+  _count: { select: { notifications: { where: { read: false } } } },
+} as const;
+
+/** The app User backing the current Supabase auth session (no demo impersonation). */
+const getSessionUser = cache(async function getSessionUser() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  // Match on the Supabase auth id; fall back to email and self-heal the link
+  // (covers accounts created before authUserId was populated).
+  let appUser = await prisma.user.findFirst({ where: { authUserId: user.id }, include: userInclude });
+  if (!appUser && user.email) {
+    appUser = await prisma.user.findFirst({ where: { email: user.email.toLowerCase() }, include: userInclude });
+    if (appUser && appUser.authUserId !== user.id) {
+      await prisma.user.update({ where: { id: appUser.id }, data: { authUserId: user.id } });
+    }
+  }
+  if (!appUser || !appUser.active) return null;
+  return appUser;
+});
+
+/** True when an admin is impersonating another persona via the demo switcher. */
+export async function isImpersonating(): Promise<boolean> {
+  if (!isDemoModeEnabled()) return false;
   const store = await cookies();
-  return getIronSession<SessionData>(store, sessionOptions);
-}
-
-export async function setSessionUser(userId: string) {
-  const session = await getSession();
-  session.userId = userId;
-  await session.save();
-}
-
-export async function clearSession() {
-  const session = await getSession();
-  session.destroy();
+  return !!store.get(DEMO_COOKIE)?.value;
 }
 
 export type CurrentUser = Awaited<ReturnType<typeof getCurrentUser>>;
 
 // cache() dedupes this within a single request — every page calls one of
-// requireAdmin/requireVendor/requireDept AND Shell calls getCurrentUser
-// again; without this each page load did two identical DB round trips.
+// requireAdmin/requireVendor/requireDept AND Shell calls getCurrentUser again.
 export const getCurrentUser = cache(async function getCurrentUser() {
-  const session = await getSession();
-  if (!session.userId) return null;
-  const user = await prisma.user.findUnique({
-    where: { id: session.userId },
-    include: {
-      department: true,
-      vendor: true,
-      _count: { select: { notifications: { where: { read: false } } } },
-    },
-  });
-  if (!user || !user.active) return null;
-  return user;
+  const real = await getSessionUser();
+
+  // Demo-only impersonation: an admin session may act as another persona. The
+  // real session must be an admin, so a forged cookie can't escalate.
+  if (isDemoModeEnabled() && real?.role === ROLE.ADMIN) {
+    const store = await cookies();
+    const demoId = store.get(DEMO_COOKIE)?.value;
+    if (demoId) {
+      const impersonated = await prisma.user.findUnique({ where: { id: demoId }, include: userInclude });
+      if (impersonated && impersonated.active) return impersonated;
+    }
+  }
+  return real;
 });
 
 /** Redirect to /login if not authenticated. */

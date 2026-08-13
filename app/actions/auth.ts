@@ -1,9 +1,10 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
-import bcrypt from "bcryptjs";
-import { setSessionUser, clearSession, homeFor, getSession, requireUser, isDemoModeEnabled } from "@/lib/session";
+import { createClient } from "@/lib/supabase/server";
+import { homeFor, getCurrentUser, isImpersonating, isDemoModeEnabled, DEMO_COOKIE } from "@/lib/session";
 import { ROLE } from "@/lib/constants";
 
 export async function loginAction(_prev: unknown, formData: FormData) {
@@ -11,53 +12,56 @@ export async function loginAction(_prev: unknown, formData: FormData) {
   const password = String(formData.get("password") || "");
   if (!email || !password) return { error: "Enter email and password." };
 
-  const user = await prisma.user.findUnique({ where: { email } });
-  if (!user || !user.active || !user.passwordHash)
+  const supabase = await createClient();
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) return { error: "Invalid credentials." };
+
+  // Ensure there's an active app account behind this identity.
+  const user = await prisma.user.findFirst({ where: { email } });
+  if (!user || !user.active) {
+    await supabase.auth.signOut();
     return { error: "Invalid credentials or inactive account." };
+  }
 
-  const ok = await bcrypt.compare(password, user.passwordHash);
-  if (!ok) return { error: "Invalid credentials." };
-
-  await setSessionUser(user.id);
   redirect(homeFor(user));
 }
 
 export async function logoutAction() {
-  await clearSession();
+  const supabase = await createClient();
+  await supabase.auth.signOut();
+  const store = await cookies();
+  store.delete(DEMO_COOKIE);
   redirect("/login");
 }
 
 // Demo-only persona switch (top-right, gated by DEMO_MODE). Only an admin
-// session can start a switch; once switched away from admin, the session's
-// stored demoAdminId keeps the switcher working without letting a session
-// that never started as admin escalate into another persona.
+// session (or an already-impersonating admin session) can start a switch. The
+// underlying Supabase session always remains the admin's — the DEMO_COOKIE only
+// changes which persona getCurrentUser resolves to.
 export async function switchPersonaAction(formData: FormData) {
   if (!isDemoModeEnabled()) redirect("/unauthorized");
-  const currentUser = await requireUser();
-  const session = await getSession();
-  const chained = !!session.demoAdminId;
-  if (currentUser.role !== ROLE.ADMIN && !chained) redirect("/unauthorized");
+  const currentUser = await getCurrentUser();
+  if (!currentUser) redirect("/login");
+  const allowed = currentUser.role === ROLE.ADMIN || (await isImpersonating());
+  if (!allowed) redirect("/unauthorized");
 
   const email = String(formData.get("email") || "").trim().toLowerCase();
-  const target = await prisma.user.findUnique({ where: { email } });
+  const target = await prisma.user.findFirst({ where: { email } });
   if (!target || !target.active) redirect("/unauthorized");
 
-  if (!chained) session.demoAdminId = currentUser.id;
-  session.userId = target.id;
-  await session.save();
+  const store = await cookies();
+  if (target.role === ROLE.ADMIN) {
+    // Switching back to the admin persona is just clearing the impersonation.
+    store.delete(DEMO_COOKIE);
+  } else {
+    store.set(DEMO_COOKIE, target.id, { httpOnly: true, sameSite: "lax", path: "/" });
+  }
   redirect(homeFor(target));
 }
 
 export async function returnToAdminAction() {
   if (!isDemoModeEnabled()) redirect("/unauthorized");
-  const session = await getSession();
-  if (!session.demoAdminId) redirect("/unauthorized");
-
-  const admin = await prisma.user.findUnique({ where: { id: session.demoAdminId } });
-  if (!admin || !admin.active) redirect("/unauthorized");
-
-  session.userId = admin.id;
-  delete session.demoAdminId;
-  await session.save();
-  redirect(homeFor(admin));
+  const store = await cookies();
+  store.delete(DEMO_COOKIE);
+  redirect("/admin");
 }

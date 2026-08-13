@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getCurrentUser, getSession, isDemoModeEnabled } from "@/lib/session";
+import { getCurrentUser, isImpersonating, isDemoModeEnabled } from "@/lib/session";
 import { ROLE, DEPT_LABEL, DEMO_PERSONAS } from "@/lib/constants";
 import { logoutAction } from "@/app/actions/auth";
 import PersonaSwitcherMenu from "./PersonaSwitcherMenu";
@@ -38,8 +38,8 @@ export default async function Shell({
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const session = await getSession();
-  const showPersonaSwitcher = isDemoModeEnabled() && (user.role === ROLE.ADMIN || !!session.demoAdminId);
+  const impersonating = await isImpersonating();
+  const showPersonaSwitcher = isDemoModeEnabled() && (user.role === ROLE.ADMIN || impersonating);
 
   const unread = user._count.notifications;
 
@@ -96,7 +96,7 @@ export default async function Shell({
           <div className="title">{title}</div>
           <div className="right" style={{ display: "flex", alignItems: "center", gap: 8 }}>
             {showPersonaSwitcher ? (
-              <PersonaSwitcherMenu personas={DEMO_PERSONAS} currentEmail={user.email} showReturnToAdmin={!!session.demoAdminId} />
+              <PersonaSwitcherMenu personas={DEMO_PERSONAS} currentEmail={user.email} showReturnToAdmin={impersonating} />
             ) : null}
             <Link href="/notifications" className="btn sm ghost" aria-label="Notifications">
               ◉ {unread > 0 ? <span className="chip bad">{unread}</span> : null}
