@@ -105,7 +105,7 @@ async function main() {
         key: d.key, name: d.name, departmentKey: d.dept,
         acceptedFormats: d.format,
         maxSizeMb: d.key === "TURNOVER" || d.key === "MSA" ? 10 : 5,
-        mandatory: true, order: order++, helperText: d.helper,
+        order: order++, helperText: d.helper,
       },
     });
     docTypes[d.key] = { id: rec.id, dept: d.dept, name: d.name };
@@ -318,6 +318,22 @@ async function main() {
     docRevisions: { BANK_STMT: 1 },
     emitRework: true,
   });
+
+  // Demo: Legal asks a plain clarification question on Anugrah's SLA doc —
+  // no resubmission needed, just a Q&A the vendor can reply to inline.
+  const anugrahSla = await prisma.document.findFirst({
+    where: { vendorId: anugrah.id, documentTypeId: docTypes.SLA.id },
+  });
+  if (anugrahSla) {
+    await prisma.comment.create({
+      data: {
+        vendorId: anugrah.id, departmentId: depts.LEGAL, documentId: anugrahSla.id,
+        authorId: mgrByDept.LEGAL,
+        body: "Could you confirm the termination notice period matches our standard 30-day terms?",
+        kind: "QUESTION", sectionIndex: 2, createdAt: daysAgo(2),
+      },
+    });
+  }
 
   // Northline — fresh submission, all depts pending
   const northline = await makeVendor({

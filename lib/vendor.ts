@@ -34,6 +34,31 @@ export async function getVendorDocTypes(vendorId: string) {
   return types.filter((t) => !coveredKeys.has(t.key));
 }
 
+/**
+ * Document ids with an unanswered department clarification question — the
+ * most recent QUESTION comment on that document is newer than any vendor
+ * reply (NOTE, authored by the vendor's own account) to it. Flips back once
+ * the vendor replies, and back again if the department asks another
+ * question afterward.
+ */
+export function openClarificationDocIds(
+  comments: { documentId: string | null; kind: string; createdAt: Date; author: { role: string } }[],
+): Set<string> {
+  const lastQuestion = new Map<string, Date>();
+  const lastReply = new Map<string, Date>();
+  for (const c of comments) {
+    if (!c.documentId) continue;
+    if (c.kind === "QUESTION") lastQuestion.set(c.documentId, c.createdAt);
+    if (c.kind === "NOTE" && c.author.role === "VENDOR") lastReply.set(c.documentId, c.createdAt);
+  }
+  const open = new Set<string>();
+  for (const [docId, qAt] of lastQuestion) {
+    const rAt = lastReply.get(docId);
+    if (!rAt || rAt < qAt) open.add(docId);
+  }
+  return open;
+}
+
 /** Group a vendor's documents by routing department key. */
 export function groupDocsByDept(vendor: VendorFull) {
   const map: Record<string, VendorFull["documents"]> = {};

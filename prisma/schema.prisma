@@ -110,7 +110,6 @@ model DocumentType {
   departmentKey   String  // routing: HR | LEGAL | FINANCE | PROCUREMENT
   acceptedFormats String  @default("pdf,doc") // csv
   maxSizeMb       Int     @default(5)
-  mandatory       Boolean @default(true)
   active          Boolean @default(true)
   order           Int     @default(0)
   helperText      String?
@@ -170,6 +169,7 @@ model Comment {
   author       User     @relation(fields: [authorId], references: [id])
   body         String
   kind         String   @default("NOTE") // REJECT | CLARIFICATION | RESUBMIT | NOTE | APPROVE
+  sectionIndex Int?     // which doc-content section (rich types only) this comment refers to
   createdAt    DateTime @default(now())
 
   @@index([vendorId])

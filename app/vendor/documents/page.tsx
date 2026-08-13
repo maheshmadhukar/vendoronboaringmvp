@@ -2,7 +2,7 @@ import Shell from "@/app/components/Shell";
 import { Alert } from "@/app/components/ui";
 import { requireVendor } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { getVendorDocTypes } from "@/lib/vendor";
+import { getVendorDocTypes, openClarificationDocIds } from "@/lib/vendor";
 import { DEPT_LABEL, DEPT_ORDER, VSTATUS, DOC_STATUS } from "@/lib/constants";
 import DocUploadRow from "./DocUploadRow";
 import SubmitButton from "./SubmitButton";
@@ -21,12 +21,15 @@ export default async function DocumentsPage() {
     include: { author: true },
     orderBy: { createdAt: "asc" },
   });
-  const commentsByDoc = new Map<string, typeof comments>();
+  // The single comment to show under "Check Issue": the department's most
+  // recent request for resubmission (REJECT / CLARIFICATION), not the full
+  // comment thread. `comments` is ascending by createdAt, so the last match
+  // per document is naturally the latest one.
+  const resubmitCommentByDoc = new Map<string, (typeof comments)[number]>();
   for (const c of comments) {
-    const key = c.documentId!;
-    if (!commentsByDoc.has(key)) commentsByDoc.set(key, []);
-    commentsByDoc.get(key)!.push(c);
+    if (c.kind === "REJECT" || c.kind === "CLARIFICATION") resubmitCommentByDoc.set(c.documentId!, c);
   }
+  const openClarification = openClarificationDocIds(comments);
 
   const editable =
     vendor.status === VSTATUS.DRAFT ||
@@ -34,12 +37,11 @@ export default async function DocumentsPage() {
     vendor.status === VSTATUS.CHANGES_REQUESTED;
   const preSubmit = vendor.status === VSTATUS.DRAFT || vendor.status === VSTATUS.INVITED;
 
-  const mandatory = types.filter((t) => t.mandatory);
-  const uploadedCount = mandatory.filter((t) => {
+  const uploadedCount = types.filter((t) => {
     const d = byType.get(t.id);
     return d && d.status !== DOC_STATUS.PENDING;
   }).length;
-  const canSubmit = uploadedCount === mandatory.length;
+  const canSubmit = uploadedCount === types.length;
 
   // group by dept
   const groups = DEPT_ORDER.map((k) => ({ key: k, items: types.filter((t) => t.departmentKey === k) }))
@@ -52,7 +54,7 @@ export default async function DocumentsPage() {
           <h1>Documents</h1>
           <p>Upload all required documents — the application is submitted in one go, not in parts.</p>
         </div>
-        <span className="chip neutral">{uploadedCount}/{mandatory.length} uploaded</span>
+        <span className="chip neutral">{uploadedCount}/{types.length} uploaded</span>
       </div>
 
       {!preSubmit ? (
@@ -71,9 +73,11 @@ export default async function DocumentsPage() {
               <DocUploadRow
                 key={t.id}
                 doc={{ id: t.id, name: t.name, accepted: t.acceptedFormats, maxMb: t.maxSizeMb, helper: t.helperText, dept: DEPT_LABEL[g.key] }}
-                current={cur ? { filename: cur.filename, status: cur.status, reviewNote: cur.reviewNote } : null}
+                current={cur ? { id: cur.id, filename: cur.filename, status: cur.status, reviewNote: cur.reviewNote } : null}
                 editable={rowEditable}
-                comments={cur ? commentsByDoc.get(cur.id) ?? [] : []}
+                comment={cur ? resubmitCommentByDoc.get(cur.id) ?? null : null}
+                needsClarification={cur ? openClarification.has(cur.id) : false}
+                preSubmit={preSubmit}
               />
             );
           })}
@@ -83,7 +87,7 @@ export default async function DocumentsPage() {
       {preSubmit ? (
         <div className="card card-pad">
           <div className="card-title">Submit application</div>
-          <div className="card-sub">All mandatory documents must be uploaded first.</div>
+          <div className="card-sub">All documents must be uploaded first.</div>
           <SubmitButton canSubmit={canSubmit} />
         </div>
       ) : null}

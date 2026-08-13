@@ -5,9 +5,8 @@ import { fmtDateTime } from "@/lib/format";
 
 type IssueComment = { id: string; author: { name: string }; kind: string; createdAt: Date; body: string };
 
-export default function CheckIssueLink({ docName, comments }: { docName: string; comments: IssueComment[] }) {
+export default function CheckIssueLink({ docName, comment }: { docName: string; comment: IssueComment }) {
   const [open, setOpen] = useState(false);
-  if (comments.length === 0) return null;
 
   return (
     <>
@@ -34,13 +33,11 @@ export default function CheckIssueLink({ docName, comments }: { docName: string;
               <div className="section-label" style={{ margin: 0 }}>{docName}</div>
               <button type="button" className="btn sm ghost" onClick={() => setOpen(false)} aria-label="Close">✕</button>
             </div>
-            {comments.map((c) => (
-              <div className="comment" key={c.id}>
-                <div className="who2">{c.author.name} <span className="role">· {c.kind.toLowerCase()}</span></div>
-                <div className="when">{fmtDateTime(c.createdAt)}</div>
-                <div className="body">{c.body}</div>
-              </div>
-            ))}
+            <div className="comment">
+              <div className="who2">{comment.author.name} <span className="role">· {comment.kind.toLowerCase()}</span></div>
+              <div className="when">{fmtDateTime(comment.createdAt)}</div>
+              <div className="body">{comment.body}</div>
+            </div>
           </div>
         </div>
       ) : null}

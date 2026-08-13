@@ -119,7 +119,6 @@ export async function updateDocType(formData: FormData) {
     data: {
       acceptedFormats: DOC_FORMATS.includes(format as never) ? format : "doc",
       maxSizeMb: Number(formData.get("maxSizeMb") || 5),
-      mandatory: formData.get("mandatory") === "on",
     },
   });
   revalidatePath("/admin/config");
@@ -131,7 +130,6 @@ export async function createDocumentType(_prev: unknown, formData: FormData) {
   const departmentId = String(formData.get("departmentId") || "");
   const format = String(formData.get("format") || "doc");
   const maxSizeMb = Number(formData.get("maxSizeMb") || 5);
-  const mandatory = formData.get("mandatory") === "on";
   if (!name) return { error: "Document name is required." };
   if (!departmentId) return { error: "Pick a department to route this document to." };
 
@@ -147,7 +145,7 @@ export async function createDocumentType(_prev: unknown, formData: FormData) {
     data: {
       key, name, departmentKey: dept.key,
       acceptedFormats: DOC_FORMATS.includes(format as never) ? format : "doc",
-      maxSizeMb, mandatory, active: true,
+      maxSizeMb, active: true,
       order: (maxOrder._max.order ?? 0) + 1,
     },
   });
@@ -162,6 +160,15 @@ export async function setDocumentTypeActive(formData: FormData) {
   const active = String(formData.get("active") || "") === "true";
   const dt = await prisma.documentType.update({ where: { id }, data: { active } });
   await audit(admin.id, active ? "RESTORE_DOCUMENT_TYPE" : "REMOVE_DOCUMENT_TYPE", undefined, dt.key);
+  revalidatePath("/admin/config");
+}
+
+export async function setBuyerDocTemplateActive(formData: FormData) {
+  const admin = await requireAdmin();
+  const id = String(formData.get("id") || "");
+  const active = String(formData.get("active") || "") === "true";
+  const t = await prisma.buyerDocTemplate.update({ where: { id }, data: { active } });
+  await audit(admin.id, active ? "RESTORE_BUYER_DOC_TEMPLATE" : "REMOVE_BUYER_DOC_TEMPLATE", undefined, t.key);
   revalidatePath("/admin/config");
 }
 

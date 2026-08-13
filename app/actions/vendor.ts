@@ -105,7 +105,7 @@ export async function uploadDocument(_prev: unknown, formData: FormData) {
   return { ok: `${dt.name} uploaded.` };
 }
 
-// Submit the whole application (all mandatory docs in one go).
+// Submit the whole application (all required docs in one go).
 export async function submitApplication() {
   const user = await requireVendor();
   const vendorId = user.vendorId!;
@@ -117,13 +117,12 @@ export async function submitApplication() {
   if (!vendor.address || !vendor.phone || !vendor.bankAccount)
     return { error: "Complete your business details before submitting." };
 
-  const vendorTypes = await getVendorDocTypes(vendorId);
-  const types = vendorTypes.filter((t) => t.mandatory);
+  const types = await getVendorDocTypes(vendorId);
   const docs = await prisma.document.findMany({ where: { vendorId } });
   const uploaded = new Set(docs.filter((d) => d.status !== DOC_STATUS.PENDING).map((d) => d.documentTypeId));
   const missing = types.filter((t) => !uploaded.has(t.id));
   if (missing.length > 0)
-    return { error: `Upload all mandatory documents before submitting. Missing: ${missing.map((m) => m.name).join(", ")}.` };
+    return { error: `Upload all required documents before submitting. Missing: ${missing.map((m) => m.name).join(", ")}.` };
 
   const now = new Date();
   await prisma.vendor.update({ where: { id: vendorId }, data: { status: VSTATUS.SUBMITTED, submittedAt: now } });
@@ -171,6 +170,10 @@ export async function replyToComment(_prev: unknown, formData: FormData) {
   if (departmentId) await notifyDept(departmentId, `${user.vendor?.name ?? "The vendor"} replied: ${body}`, vendorId);
 
   revalidatePath("/vendor");
-  if (documentId) revalidatePath(`/vendor/documents`);
+  if (documentId) {
+    revalidatePath("/vendor/documents");
+    revalidatePath(`/dept/review/${vendorId}`);
+    revalidatePath(`/dept/review/${vendorId}/document/${documentId}`);
+  }
   return { ok: "Reply sent." };
 }

@@ -5,11 +5,21 @@ import { prisma } from "@/lib/prisma";
 import { loadOwnedDocument } from "@/lib/dept";
 import { DOC_STATUS, VSTATUS, REJECTION_REASON } from "@/lib/constants";
 import { recomputeDeptReviewStatus, notify, notifyAdmins, audit } from "@/lib/workflow";
+import { getDocumentContent, isRichDocType } from "@/lib/documentContent";
 
 /** Coerce a submitted reason to a known REJECTION_REASON value, else null. */
 function normalizeReason(raw: FormDataEntryValue | null): string | null {
   const v = String(raw || "").trim();
   return v && v in REJECTION_REASON ? v : null;
+}
+
+/** Which content section (rich types only) the submitted clause dropdown points to, if valid. */
+function normalizeSectionIndex(raw: FormDataEntryValue | null, docTypeKey: string, vendor: { legalName?: string | null; name: string; gstin?: string | null; address?: string | null }): number | null {
+  if (!isRichDocType(docTypeKey)) return null;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 0) return null;
+  const content = getDocumentContent(docTypeKey, vendor);
+  return content.kind === "rich" && n < content.sections.length ? n : null;
 }
 
 const ownDocument = loadOwnedDocument;
@@ -57,13 +67,14 @@ export async function rejectDocument(_prev: unknown, formData: FormData) {
   const reason = normalizeReason(formData.get("reason"));
   const { user, document } = await ownDocument(documentId);
   if (document.vendor.status === VSTATUS.HALTED) return { error: "Onboarding is halted by admin." };
+  const sectionIndex = normalizeSectionIndex(formData.get("sectionIndex"), document.documentType.key, document.vendor);
 
   await prisma.document.update({
     where: { id: documentId },
     data: { status: DOC_STATUS.REJECTED, reviewNote: comment, rejectionReason: reason },
   });
   await prisma.comment.create({
-    data: { vendorId: document.vendorId, departmentId: user.departmentId, documentId, authorId: user.id, body: comment, kind: "REJECT" },
+    data: { vendorId: document.vendorId, departmentId: user.departmentId, documentId, authorId: user.id, body: comment, kind: "REJECT", sectionIndex },
   });
   await audit(user.id, `REJECT_DOCUMENT`, document.vendorId, comment);
   await notifyVendorAccount(document.vendorId, `${user.department!.name} rejected "${document.documentType.name}": ${comment}`);
@@ -95,6 +106,7 @@ export async function clarifyDocument(_prev: unknown, formData: FormData) {
   const reason = normalizeReason(formData.get("reason"));
   const { user, document } = await ownDocument(documentId);
   if (needsResubmission && document.vendor.status === VSTATUS.HALTED) return { error: "Onboarding is halted by admin." };
+  const sectionIndex = normalizeSectionIndex(formData.get("sectionIndex"), document.documentType.key, document.vendor);
 
   if (needsResubmission) {
     await prisma.document.update({
@@ -103,7 +115,7 @@ export async function clarifyDocument(_prev: unknown, formData: FormData) {
     });
   }
   await prisma.comment.create({
-    data: { vendorId: document.vendorId, departmentId: user.departmentId, documentId, authorId: user.id, body: comment, kind: needsResubmission ? "CLARIFICATION" : "QUESTION" },
+    data: { vendorId: document.vendorId, departmentId: user.departmentId, documentId, authorId: user.id, body: comment, kind: needsResubmission ? "CLARIFICATION" : "QUESTION", sectionIndex },
   });
   await audit(user.id, needsResubmission ? "REQUEST_CHANGES_DOCUMENT" : "CLARIFY_DOCUMENT", document.vendorId, comment);
   await notifyVendorAccount(

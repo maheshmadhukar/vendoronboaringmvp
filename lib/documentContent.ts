@@ -184,6 +184,28 @@ export function getDocumentContent(key: string, vendor: Vendor): DocContent {
   }
 }
 
+/**
+ * Which content section a department's comment is actually about, if any —
+ * the most recent QUESTION/CLARIFICATION/REJECT comment that named a
+ * section, so the highlighted clause tracks the live conversation rather
+ * than a fixed per-document-type default.
+ */
+export function linkedSectionIndex(
+  comments: { kind: string; sectionIndex: number | null }[],
+  sectionCount: number,
+): number | null {
+  for (let i = comments.length - 1; i >= 0; i--) {
+    const c = comments[i];
+    if (
+      (c.kind === "QUESTION" || c.kind === "CLARIFICATION" || c.kind === "REJECT") &&
+      c.sectionIndex != null && c.sectionIndex >= 0 && c.sectionIndex < sectionCount
+    ) {
+      return c.sectionIndex;
+    }
+  }
+  return null;
+}
+
 /** Plain-text rendering of a document's mock content, for the client-side "Download" button. */
 export function buildDocumentText(
   doc: { documentTypeName: string; vendorName: string; filename: string | null },

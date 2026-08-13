@@ -15,7 +15,7 @@ export default function SubmitButton({ canSubmit }: { canSubmit: boolean }) {
       <button className="btn primary" disabled={pending || !canSubmit}>
         {pending ? "Submitting…" : "Submit application for review"}
       </button>
-      {!canSubmit ? <span className="btn-note" style={{ marginLeft: 10 }}>Upload all mandatory documents to enable submit.</span> : null}
+      {!canSubmit ? <span className="btn-note" style={{ marginLeft: 10 }}>Upload all required documents to enable submit.</span> : null}
     </form>
   );
 }

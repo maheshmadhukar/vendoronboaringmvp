@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import Shell from "@/app/components/Shell";
 import { loadOwnedDocument } from "@/lib/dept";
 import { prisma } from "@/lib/prisma";
-import { getDocumentContent, isRichDocType } from "@/lib/documentContent";
+import { getDocumentContent, isRichDocType, linkedSectionIndex } from "@/lib/documentContent";
 import { ROLE, VSTATUS } from "@/lib/constants";
 import DocumentActions from "./DocumentActions";
 
@@ -28,6 +28,8 @@ export default async function DocumentPage({ params }: { params: Promise<{ vendo
   const rich = isRichDocType(document.documentType.key);
   const halted = document.vendor.status === VSTATUS.HALTED;
   const actionable = !halted && document.status !== "APPROVED" && document.status !== "REJECTED";
+  const sections = rich && content.kind === "rich" ? content.sections.map((s) => ({ heading: s.heading })) : undefined;
+  const linkedIndex = rich && content.kind === "rich" ? linkedSectionIndex(comments, content.sections.length) : null;
 
   return (
     <Shell
@@ -65,7 +67,14 @@ export default async function DocumentPage({ params }: { params: Promise<{ vendo
               {content.sections.map((s, i) => (
                 <div key={i}>
                   <h6>{s.heading}</h6>
-                  {s.highlight ? (
+                  {i === linkedIndex ? (
+                    <p>
+                      <span className="doc-highlight">
+                        {s.body}
+                        <span className="marker">1</span>
+                      </span>
+                    </p>
+                  ) : linkedIndex == null && s.highlight ? (
                     <p>
                       <span className="doc-highlight">
                         {s.highlight}
@@ -92,7 +101,7 @@ export default async function DocumentPage({ params }: { params: Promise<{ vendo
                   </div>
                 ))
               )}
-              {actionable ? <DocumentActions documentId={document.id} mode="rail" /> : null}
+              {actionable ? <DocumentActions documentId={document.id} mode="rail" sections={sections} /> : null}
             </div>
           </div>
         </>
@@ -129,7 +138,7 @@ export default async function DocumentPage({ params }: { params: Promise<{ vendo
         </div>
       ) : null}
 
-      {actionable ? <DocumentActions documentId={document.id} mode="bottom" /> : (
+      {actionable ? <DocumentActions documentId={document.id} mode="bottom" sections={sections} /> : (
         halted ? <div className="alert warn" style={{ marginTop: 18 }}>Onboarding is halted by the admin — no actions can be taken.</div> : null
       )}
     </Shell>

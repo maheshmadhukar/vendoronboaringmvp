@@ -193,7 +193,7 @@ export function computeDeptBottlenecks(vendors: VendorRow[], departments: Depart
 // ---------------------------------------------------------------------------
 // Section 4 — Vendor Behavior & Quality
 // ---------------------------------------------------------------------------
-export function computeEngagement(vendors: VendorRow[], mandatoryDocTypeCount: number) {
+export function computeEngagement(vendors: VendorRow[], docTypeCount: number) {
   const submitted = vendors.filter((v) => v.submittedAt != null);
   const timeToRegister = avg(vendors.map((v) => daysBetween(v.registeredAt, v.createdAt)).filter((n): n is number => n != null && n >= 0));
   const timeToStart = avg(vendors.map((v) => daysBetween(v.onboardingStartedAt, v.registeredAt)).filter((n): n is number => n != null && n >= 0));
@@ -217,9 +217,9 @@ export function computeEngagement(vendors: VendorRow[], mandatoryDocTypeCount: n
   const inactive = active.filter((v) => (now - lastActivity(v)) / DAY > 7).length;
 
   const completionOf = (v: VendorRow) => {
-    if (mandatoryDocTypeCount === 0) return 1;
+    if (docTypeCount === 0) return 1;
     const done = new Set(v.documents.filter((d) => d.status !== DOC_STATUS.PENDING).map((d) => d.documentTypeId)).size;
-    return Math.min(1, done / mandatoryDocTypeCount);
+    return Math.min(1, done / docTypeCount);
   };
   const incomplete = active.filter((v) => completionOf(v) < 1).length;
 

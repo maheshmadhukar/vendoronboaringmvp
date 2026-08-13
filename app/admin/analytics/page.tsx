@@ -30,7 +30,7 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
   const period = resolvePeriod({ mode: "year", ...sp });
   const prev = previousPeriod(period);
 
-  const [vendorsRaw, departments, mandatoryDocTypes] = await Promise.all([
+  const [vendorsRaw, departments, docTypeCount] = await Promise.all([
     prisma.vendor.findMany({
       include: {
         deptReviews: { include: { department: true } },
@@ -39,7 +39,7 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
       },
     }),
     prisma.department.findMany(),
-    prisma.documentType.count({ where: { active: true, mandatory: true } }),
+    prisma.documentType.count({ where: { active: true } }),
   ]);
   const vendors = vendorsRaw as VendorRow[];
 
@@ -47,7 +47,7 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
   const funnel = computeFunnel(vendors, period);
   const health = computePipelineHealth(vendors);
   const { speed, queue } = computeDeptBottlenecks(vendors, departments, period);
-  const engagement = computeEngagement(vendors, mandatoryDocTypes);
+  const engagement = computeEngagement(vendors, docTypeCount);
   const quality = computeQuality(vendors, period);
   const trends = computeTrends(vendors, 12);
   const stageTime = computeStageTime(vendors, departments);

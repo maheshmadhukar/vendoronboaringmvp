@@ -3,7 +3,7 @@ import { requireAdmin } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { getConfig } from "@/lib/workflow";
 import { DEPT_LABEL } from "@/lib/constants";
-import { updateDocType, setDocumentTypeActive } from "@/app/actions/admin";
+import { updateDocType, setDocumentTypeActive, setBuyerDocTemplateActive } from "@/app/actions/admin";
 import ConfigForm from "./ConfigForm";
 import AddDocumentTypeForm from "./AddDocumentTypeForm";
 import BuyerDocTemplateFileCell from "./BuyerDocTemplateFileCell";
@@ -31,11 +31,11 @@ export default async function ConfigPage() {
       <div className="card" style={{ marginTop: 18 }}>
         <div className="card-pad" style={{ paddingBottom: 0 }}>
           <div className="card-title">Document requirements</div>
-          <div className="card-sub">Accepted format, max size, and whether each document is mandatory. Routing shows which department reviews it.</div>
+          <div className="card-sub">Accepted format, max size, and routing for each document.</div>
         </div>
         <div className="table-wrap">
           <table className="table">
-            <thead><tr><th>Document</th><th>Routed to</th><th>Format</th><th>Max MB</th><th>Mandatory</th><th>Active</th><th></th></tr></thead>
+            <thead><tr><th>Document</th><th>Routed to</th><th>Format</th><th>Max MB</th><th>Active</th><th></th></tr></thead>
             <tbody>
               {docTypes.map((t) => (
                 <tr key={t.id} style={t.active ? undefined : { opacity: 0.55 }}>
@@ -50,7 +50,6 @@ export default async function ConfigPage() {
                     </form>
                   </td>
                   <td><input form={`dt-${t.id}`} name="maxSizeMb" type="number" defaultValue={t.maxSizeMb} style={{ width: 64, fontSize: 12, padding: "4px 8px" }} /></td>
-                  <td><input form={`dt-${t.id}`} name="mandatory" type="checkbox" defaultChecked={t.mandatory} /></td>
                   <td>{t.active ? <span className="chip good">Active</span> : <span className="chip neutral">Inactive</span>}</td>
                   <td style={{ display: "flex", gap: 6 }}>
                     <button form={`dt-${t.id}`} className="btn sm">Save</button>
@@ -78,7 +77,7 @@ export default async function ConfigPage() {
         </div>
         <div className="table-wrap">
           <table className="table">
-            <thead><tr><th>Document</th><th>Routed to</th><th>File</th><th>Active</th></tr></thead>
+            <thead><tr><th>Document</th><th>Routed to</th><th>File</th><th>Active</th><th></th></tr></thead>
             <tbody>
               {buyerDocTemplates.map((t) => (
                 <tr key={t.id} style={t.active ? undefined : { opacity: 0.55 }}>
@@ -86,6 +85,13 @@ export default async function ConfigPage() {
                   <td>{DEPT_LABEL[t.departmentKey] ?? t.departmentKey}</td>
                   <td><BuyerDocTemplateFileCell templateId={t.id} filename={t.filename} sizeKb={t.sizeKb} /></td>
                   <td>{t.active ? <span className="chip good">Active</span> : <span className="chip neutral">Inactive</span>}</td>
+                  <td>
+                    <form action={setBuyerDocTemplateActive}>
+                      <input type="hidden" name="id" value={t.id} />
+                      <input type="hidden" name="active" value={t.active ? "false" : "true"} />
+                      <button className={`btn sm ${t.active ? "danger" : ""}`}>{t.active ? "Remove" : "Restore"}</button>
+                    </form>
+                  </td>
                 </tr>
               ))}
             </tbody>

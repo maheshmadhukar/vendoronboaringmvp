@@ -2,7 +2,7 @@ import Link from "next/link";
 import Shell from "@/app/components/Shell";
 import { Chip, Tracker, Alert } from "@/app/components/ui";
 import { requireVendor } from "@/lib/session";
-import { getVendorFull } from "@/lib/vendor";
+import { getVendorFull, openClarificationDocIds } from "@/lib/vendor";
 import { pipelineStage } from "@/lib/workflow";
 import {
   DEPT_LABEL, DEPT_ORDER, VSTATUS, VSTATUS_LABEL, VSTATUS_TONE,
@@ -19,7 +19,10 @@ export default async function VendorOverview() {
   if (!vendor) return null;
 
   const preSubmit = vendor.status === VSTATUS.DRAFT || vendor.status === VSTATUS.INVITED;
-  const flaggedDocs = vendor.documents.filter((d) => d.status === DOC_STATUS.CHANGES_REQUESTED);
+  const openClarification = openClarificationDocIds(vendor.comments);
+  const flaggedDocs = vendor.documents.filter(
+    (d) => d.status === DOC_STATUS.CHANGES_REQUESTED || openClarification.has(d.id)
+  );
   const uploadEditable = vendor.status !== VSTATUS.HALTED;
 
   return (
@@ -65,9 +68,14 @@ export default async function VendorOverview() {
                 helper: d.documentType.helperText,
                 dept: DEPT_LABEL[d.documentType.departmentKey],
               }}
-              current={{ filename: d.filename, status: d.status, reviewNote: d.reviewNote }}
-              editable={uploadEditable}
-              comments={vendor.comments.filter((c) => c.documentId === d.id)}
+              current={{ id: d.id, filename: d.filename, status: d.status, reviewNote: d.reviewNote }}
+              editable={uploadEditable && d.status === DOC_STATUS.CHANGES_REQUESTED}
+              comment={
+                vendor.comments
+                  .filter((c) => c.documentId === d.id && (c.kind === "REJECT" || c.kind === "CLARIFICATION"))
+                  .at(-1) ?? null
+              }
+              needsClarification={openClarification.has(d.id)}
             />
           ))}
         </div>
@@ -95,18 +103,7 @@ export default async function VendorOverview() {
                     {approved ? (
                       <span className="sub" style={{ fontSize: 10.5 }}>{fmtDate(r.updatedAt)}</span>
                     ) : (
-                      <div>
-                        <Chip tone={sla.tone}>{sla.label}</Chip>
-                        <div className="bar-track" style={{ marginTop: 4, height: 4 }}>
-                          <div
-                            className="bar-fill"
-                            style={{
-                              width: `${sla.pct}%`,
-                              background: sla.tone === "warn" ? "var(--warn)" : sla.tone === "bad" ? "var(--bad)" : sla.tone === "neutral" ? "var(--ink-faint)" : "var(--good)",
-                            }}
-                          />
-                        </div>
-                      </div>
+                      <Chip tone={sla.tone}>{sla.label}</Chip>
                     )}
                   </div>
                 </li>

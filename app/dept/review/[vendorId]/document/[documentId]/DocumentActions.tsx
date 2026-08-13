@@ -4,13 +4,26 @@ import { useActionState } from "react";
 import { documentReviewAction } from "@/app/actions/dept";
 import { REJECTION_REASON_ORDER, REJECTION_REASON_LABEL } from "@/lib/constants";
 
-export default function DocumentActions({ documentId, mode }: { documentId: string; mode: "rail" | "bottom" }) {
+export default function DocumentActions({
+  documentId, mode, sections,
+}: { documentId: string; mode: "rail" | "bottom"; sections?: { heading: string }[] }) {
   const [state, action, pending] = useActionState(documentReviewAction, null as { error?: string; ok?: string } | null);
+
+  const sectionPicker = sections && sections.length > 0 ? (
+    <select
+      name="sectionIndex" defaultValue=""
+      style={{ width: "100%", padding: "6px 8px", fontSize: 12, marginBottom: 8, border: "1px solid var(--border-strong)", borderRadius: "var(--radius-sm)", background: "var(--panel)", color: "var(--ink)" }}
+    >
+      <option value="">— No specific clause —</option>
+      {sections.map((s, i) => <option key={i} value={i}>{s.heading}</option>)}
+    </select>
+  ) : null;
 
   if (mode === "rail") {
     return (
       <form action={action}>
         <input type="hidden" name="documentId" value={documentId} />
+        {sectionPicker}
         <textarea name="comment" placeholder="Write a comment…" rows={2} style={{ width: "100%", fontSize: 12.5, marginBottom: 8 }} />
         {state?.error ? <div className="alert bad" style={{ fontSize: 11.5, padding: 8 }}>{state.error}</div> : null}
         {state?.ok ? <div className="alert good" style={{ fontSize: 11.5, padding: 8 }}>{state.ok}</div> : null}
@@ -36,6 +49,12 @@ export default function DocumentActions({ documentId, mode }: { documentId: stri
           ))}
         </select>
       </div>
+      {sectionPicker ? (
+        <div className="field" style={{ maxWidth: 480 }}>
+          <label>Clause <span className="muted">(optional — which section this is about)</span></label>
+          {sectionPicker}
+        </div>
+      ) : null}
       <div className="field" style={{ maxWidth: 480 }}>
         <label>Comment <span className="muted">(required to reject / ask for clarification)</span></label>
         <textarea name="comment" placeholder="Explain the issue, or what you'd like the vendor to clarify…" />

@@ -27,9 +27,6 @@ export default function AddDocumentTypeForm({ depts, formats }: { depts: { id: s
         <label>Max MB</label>
         <input name="maxSizeMb" type="number" defaultValue={5} min={1} style={{ width: 80 }} />
       </div>
-      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, marginBottom: 9 }}>
-        <input type="checkbox" name="mandatory" defaultChecked /> Mandatory
-      </label>
       <button className="btn sm primary" disabled={pending}>{pending ? "Adding…" : "Add document type"}</button>
       {state?.error ? <span className="sub" style={{ color: "var(--bad)" }}>{state.error}</span> : null}
       {state?.ok ? <span className="sub" style={{ color: "var(--good)" }}>{state.ok}</span> : null}
