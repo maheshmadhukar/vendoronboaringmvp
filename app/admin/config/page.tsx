@@ -3,10 +3,11 @@ import { requireAdmin } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { getConfig } from "@/lib/workflow";
 import { DEPT, DEPT_LABEL } from "@/lib/constants";
-import { updateDocType, setDocumentTypeActive, setBuyerDocTemplateActive } from "@/app/actions/admin";
+import { setBuyerDocTemplateActive } from "@/app/actions/admin";
 import { paginate } from "@/lib/paginate";
 import Pagination from "@/app/components/Pagination";
 import ConfigForm from "./ConfigForm";
+import DocTypeRow from "./DocTypeRow";
 import AddDocumentTypeForm from "./AddDocumentTypeForm";
 import BuyerDocTemplateFileCell from "./BuyerDocTemplateFileCell";
 
@@ -47,28 +48,12 @@ export default async function ConfigPage({ searchParams }: { searchParams: Promi
             <thead><tr><th>Document</th><th>Routed to</th><th>Format</th><th>Max MB</th><th>Active</th><th></th></tr></thead>
             <tbody>
               {docTypesPagination.pageItems.map((t) => (
-                <tr key={t.id} style={t.active ? undefined : { opacity: 0.55 }}>
-                  <td className="strong">{t.name}</td>
-                  <td>{DEPT_LABEL[t.departmentKey] ?? t.departmentKey}</td>
-                  <td>
-                    <form action={updateDocType} id={`dt-${t.id}`} style={{ display: "contents" }}>
-                      <input type="hidden" name="id" value={t.id} />
-                      <select name="acceptedFormats" defaultValue={DOC_FORMATS.includes(t.acceptedFormats as never) ? t.acceptedFormats : "doc"} style={{ fontSize: 12, padding: "4px 8px" }}>
-                        {DOC_FORMATS.map((f) => <option key={f} value={f}>{f}</option>)}
-                      </select>
-                    </form>
-                  </td>
-                  <td><input form={`dt-${t.id}`} name="maxSizeMb" type="number" defaultValue={t.maxSizeMb} style={{ width: 64, fontSize: 12, padding: "4px 8px" }} /></td>
-                  <td>{t.active ? <span className="chip good">Active</span> : <span className="chip neutral">Inactive</span>}</td>
-                  <td style={{ display: "flex", gap: 6 }}>
-                    <button form={`dt-${t.id}`} className="btn sm">Save</button>
-                    <form action={setDocumentTypeActive}>
-                      <input type="hidden" name="id" value={t.id} />
-                      <input type="hidden" name="active" value={t.active ? "false" : "true"} />
-                      <button className={`btn sm ${t.active ? "danger" : ""}`}>{t.active ? "Remove" : "Restore"}</button>
-                    </form>
-                  </td>
-                </tr>
+                <DocTypeRow
+                  key={t.id}
+                  t={{ id: t.id, name: t.name, acceptedFormats: t.acceptedFormats, maxSizeMb: t.maxSizeMb, active: t.active }}
+                  deptLabel={DEPT_LABEL[t.departmentKey] ?? t.departmentKey}
+                  formats={DOC_FORMATS}
+                />
               ))}
             </tbody>
           </table>

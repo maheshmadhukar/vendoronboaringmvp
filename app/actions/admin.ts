@@ -114,15 +114,17 @@ export async function updateConfig(_prev: unknown, formData: FormData) {
   return { ok: "Configuration saved." };
 }
 
-export async function updateDocType(formData: FormData) {
+export async function updateDocType(input: { id: string; acceptedFormats: string; maxSizeMb: number }) {
   await requireAdmin();
-  const id = String(formData.get("id") || "");
-  const format = String(formData.get("acceptedFormats") || "doc");
+  const id = String(input.id || "");
+  if (!id) return;
+  const format = String(input.acceptedFormats || "doc");
+  const maxSizeMb = Number(input.maxSizeMb);
   await prisma.documentType.update({
     where: { id },
     data: {
       acceptedFormats: DOC_FORMATS.includes(format as never) ? format : "doc",
-      maxSizeMb: Number(formData.get("maxSizeMb") || 5),
+      maxSizeMb: Number.isFinite(maxSizeMb) && maxSizeMb > 0 ? Math.round(maxSizeMb) : 5,
     },
   });
   revalidatePath("/admin/config");
