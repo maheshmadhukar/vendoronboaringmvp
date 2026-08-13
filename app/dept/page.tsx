@@ -9,6 +9,7 @@ import { DEPT, DEPT_LABEL, REVIEW_STATUS, REVIEW_TONE, ROLE, VSTATUS } from "@/l
 import { fmtDate } from "@/lib/format";
 import { isBreached, slaVisual, workingDaysLeft } from "@/lib/sla";
 import { resolveDashboardRange } from "@/lib/period";
+import RealtimeRefresh from "@/app/components/RealtimeRefresh";
 
 type SearchParams = { range?: string };
 
@@ -43,6 +44,15 @@ export default async function DeptQueue({ searchParams }: { searchParams: Promis
 
   return (
     <Shell active={user.role === ROLE.ADMIN ? "procurement" : "queue"} title={`${DEPT_LABEL[dept.key]} — Review Queue`}>
+      {/* Phase 5: refresh the queue live as vendors submit / reviews change. */}
+      <RealtimeRefresh
+        channelName={`dept-queue-${dept.id}`}
+        subscriptions={[
+          { table: "DeptReview", filter: `departmentId=eq.${dept.id}` },
+          { table: "Vendor" },
+          { table: "Document" },
+        ]}
+      />
       <div className="page-head">
         <div>
           <h1>{DEPT_LABEL[dept.key]} Review Queue</h1>

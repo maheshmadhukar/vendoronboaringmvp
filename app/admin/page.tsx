@@ -10,6 +10,7 @@ import { resolveDashboardRange } from "@/lib/period";
 import { resumeVendor } from "@/app/actions/admin";
 import Spotlight from "./Spotlight";
 import RangeSelect from "./RangeSelect";
+import RealtimeRefresh from "@/app/components/RealtimeRefresh";
 
 const SLA_DEPTS = DEPT_ORDER.filter((k) => k !== "PROCUREMENT");
 
@@ -137,6 +138,11 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
 
   return (
     <Shell active="dashboard" title="Status Dashboard">
+      {/* Phase 5: live-refresh the pipeline as vendors/reviews/docs change. */}
+      <RealtimeRefresh
+        channelName="admin-dashboard"
+        subscriptions={[{ table: "Vendor" }, { table: "DeptReview" }, { table: "Document" }]}
+      />
       <Spotlight key={spotlightKey} targetId={sp.focus ?? null} />
       <div className="page-head">
         <div>

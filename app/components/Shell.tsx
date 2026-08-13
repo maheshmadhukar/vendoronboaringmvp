@@ -4,6 +4,7 @@ import { getCurrentUser, isImpersonating, isDemoModeEnabled } from "@/lib/sessio
 import { ROLE, DEPT_LABEL, DEMO_PERSONAS } from "@/lib/constants";
 import { logoutAction } from "@/app/actions/auth";
 import PersonaSwitcherMenu from "./PersonaSwitcherMenu";
+import RealtimeRefresh from "./RealtimeRefresh";
 
 type NavItem = { href: string; label: string; icon: string; key: string };
 
@@ -53,6 +54,11 @@ export default async function Shell({
 
   return (
     <div className="app">
+      {/* Phase 5: live-update the unread badge on the user's own notifications. */}
+      <RealtimeRefresh
+        channelName={`notif-${user.id}`}
+        subscriptions={[{ table: "Notification", filter: `userId=eq.${user.id}` }]}
+      />
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-mark">V</div>

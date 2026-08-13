@@ -15,8 +15,9 @@ lives in the approved milestone plan.
 - Branch is `supabase-changes` (NOT main). `.env` holds live Supabase creds (git-ignored).
 - Seeds must run over the direct connection (already handled by `prisma/seedClient.ts`); a full
   reseed takes several minutes (network round-trips to ap-south-1).
-- Next up: **Phase 4 (Email)** — Supabase Auth SMTP (Resend) for auth mail + `lib/email.ts`
-  hooked into `notify()` in `lib/workflow.ts`, gated by `Config.notify*`. Needs `RESEND_API_KEY`.
+- Phase 4 (Email) **code done**; ops pending (RESEND_API_KEY + verified sender + Supabase
+  Auth SMTP + live send test). Phase 5 (Realtime) **code + live infra done** (see below);
+  pending a two-session browser verify. Next up: **Phase 6 (AI review)**.
 - Deferred cleanup (Phase 7): uninstall unused `iron-session`; drop legacy `passwordHash`
   column + bcrypt from seed; update `README.md` / `SCOPE_NOTES.md`.
 
@@ -24,6 +25,59 @@ lives in the approved milestone plan.
 rewrite); adopt Supabase Auth; upgrade Storage + Email + Realtime + AI; drop & reseed.
 Doc clause-highlighting: **hybrid** — keep the generated rich view for MSA/NDA/SLA/COC, render
 real files for everything else. Seed real placeholder files for **3 showcase vendors** only.
+
+### Phase 5 — Realtime — code + infra done, live browser verify pending
+- **Pattern: Realtime as an invalidation signal, not a data channel.** New client cmp
+  `app/components/RealtimeRefresh.tsx` subscribes to `postgres_changes` and calls
+  `router.refresh()` (300ms-debounced) → server components re-render with fresh data, so
+  all RBAC/queries stay server-side. Client never reads row payloads.
+- New browser client `lib/supabase/client.ts` (`createBrowserClient`, anon key + cookie
+  session). Mounted: **badge** in `Shell.tsx` (own `Notification`, `userId=eq.<id>`);
+  **dept queue** in `app/dept/page.tsx` (`DeptReview` dept-filtered + `Vendor` + `Document`);
+  **admin dashboard** in `app/admin/page.tsx` (`Vendor` + `DeptReview` + `Document`).
+- **Infra applied to live DB** via `supabase/phase5_realtime.sql` (over `DIRECT_URL`):
+  RLS enabled on the 4 tables + SELECT policies (`rt_own_notifications` self-scoped;
+  `rt_staff_*` gated by `is_staff()` = Admin/Dept) + tables added to `supabase_realtime`
+  publication. **Verified**: all 4 in publication, RLS on, policies present.
+- **Safe for Prisma**: connection role is `postgres` with `rolbypassrls=true` (checked) —
+  server-side reads bypass RLS. Confirmed post-apply (vendor/review/notif counts read fine).
+  ⚠️ Watch: `authUserId` is **text**, `auth.uid()` is **uuid** — policies cast
+  `auth.uid()::text`. Realtime is anon-key + cookie session; a vendor cannot subscribe to
+  `Vendor`/`DeptReview`/`Document` (policy denies non-staff).
+- ✅ **Browser-verified live** (localhost:3000): (1) **badge** — as vendor Karan/Anugrah,
+  inserting a `Notification` for his user bumped the unread badge 3→4 with no reload
+  (change event logged, `router.refresh()` fired, list re-rendered). (2) **dept queue** — as
+  Finance mgr Neha, flipping a `DeptReview` PENDING→APPROVED live-updated the queue tiles
+  (Awaiting 9→8, SLA breached 4→3, Actioned 29→30) and dropped that vendor from the list.
+  All test-data mutations reverted afterward (review back to PENDING, test notifications
+  deleted). Reversible infra: `drop policy` + `disable row level security` + `alter
+  publication ... drop table`.
+- ⚠️ **Two SQL fixes surfaced during the live test — folded into
+  `supabase/phase5_realtime.sql`:** (a) the earlier `db push --force-reset` had dropped &
+  recreated the `public` schema, wiping Supabase's default grants → `authenticated` had NO
+  table privileges, so Realtime delivered zero events. Fixed with
+  `grant usage on schema public` + `grant select` on the 4 tables. (b) `authUserId` is
+  **text** but `auth.uid()` is **uuid** — policies cast `auth.uid()::text`; and the
+  Notification policy now uses a `security definer` helper `current_app_user_id()` so it can
+  read `User` without granting `authenticated` SELECT on `User` (which would expose emails).
+  Verified via role-simulation: vendor sees only own notifications & 0 Vendor/DeptReview
+  rows; admin/dept see the full pipeline.
+
+### Phase 4 — Email (Resend) — code done, ops pending
+- New **`lib/email.ts`**: Resend client, `sendEmail()` (best-effort — swallows all
+  errors so email can never break a workflow write), `notificationEmail()` HTML wrapper,
+  `emailEnabled()` / `appUrl()` helpers. **No-op when `RESEND_API_KEY` is unset** — safe by
+  default, nothing sends until the key is configured.
+- **`notify()` in `lib/workflow.ts`** now mirrors every in-app notification to email:
+  after the `Notification` row it looks up the user (`email`, `active`), skips inactive
+  users, and sends per-`kind` subject/CTA (STATUS→/vendor, TASK→/dept, AUDIT→/admin).
+  The `Config.notify*` gating already happens at call sites, so no re-gating here.
+- `resend@^6` installed. `.env.example` adds `EMAIL_FROM` + `APP_URL`.
+- ✅ tsc clean, 29 tests green.
+- ⚠️ **Ops still required (not code):** (1) set `RESEND_API_KEY` + verified `EMAIL_FROM`
+  domain in `.env` and Vercel; (2) Supabase Dashboard → Auth → SMTP → point at Resend for
+  **auth mail** (invite / reset / confirm) — this half is dashboard config, no code.
+  (3) End-to-end send not yet verified (needs a live key).
 
 ### Phase 0 — test safety net (NEW)
 - Added **Vitest** + `tests/` covering the pure logic the DB swap must not change:
