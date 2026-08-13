@@ -4,6 +4,26 @@ Running log of debugging/perf work, separate from `SCOPE_NOTES.md` (which covers
 
 ---
 
+## 2026-08-13 — Merge `origin/main` → `supabase-changes` (commit `04c66dd`)
+
+Pulled main's 2 new commits (app-wide **pagination** + dept **SLA-breach login popup**; Analytics/
+Config rework — remove Procurement from those views) into the Supabase branch. **`main` untouched**
+(merged into `supabase-changes` only). **Decision (user): all conflicts resolve toward the Supabase
+integration — keep main's *features*, never resurrect iron-session/OTP/bcrypt.** (Saved to memory:
+`merge-resolve-toward-supabase`.)
+
+- **Conflicts (2 files) + 1 broken auto-merge:** `lib/session.ts`, `app/dept/page.tsx`, and
+  `app/actions/auth.ts` (auto-merged but pulled in main's iron-session `consumeLoginFlash`).
+- main's SLA popup needs a one-shot `justLoggedIn` flash flag it delivered via **iron-session** —
+  which Phase 7 uninstalled. **Re-implemented the flag as a plain cookie on Supabase Auth:** new
+  `setLoginFlash`/`getLoginFlash`/`clearLoginFlash` in `lib/session.ts`; `loginAction` sets it after
+  `signInWithPassword`; `consumeLoginFlash` clears it; `dept/page.tsx` reads via `getLoginFlash()`
+  and keeps **both** the Phase 5 `RealtimeRefresh` mount and main's pagination/`SlaBreachPopup`.
+- `app/admin/page.tsx` auto-merged cleanly (kept Realtime + pagination).
+- ✅ conflict-marker-free · tsc clean · 29 tests green · **production build green (17 routes)**.
+- ⚠️ **Not browser-verified:** the SLA-breach popup *firing* (needs a live dept-manager login with a
+  breached vendor). Plumbing compiles + builds. Merge commit is **local, not pushed**.
+
 ## 2026-08-13 — Supabase migration (Phases 0–3 of 7) — branch `supabase-changes`
 
 **Status:** Phases 0, 1, 2, 3 built + verified (build green, 29 tests green, storage round-trip
