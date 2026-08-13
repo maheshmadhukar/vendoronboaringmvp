@@ -74,7 +74,7 @@ export default async function ConfigPage() {
       <div className="card" style={{ marginTop: 18 }}>
         <div className="card-pad" style={{ paddingBottom: 0 }}>
           <div className="card-title">Buyer document templates</div>
-          <div className="card-sub">Documents the buyer sends to the vendor (e.g. MSA, NDA). These are offered, pre-checked, when sending an invite.</div>
+          <div className="card-sub">Documents the buyer sends to the vendor. NDA is always sent automatically; MSA is offered and pre-checked when sending an invite.</div>
         </div>
         <div className="table-wrap">
           <table className="table">

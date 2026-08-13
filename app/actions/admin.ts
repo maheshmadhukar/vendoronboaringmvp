@@ -42,12 +42,13 @@ export async function inviteVendor(_prev: unknown, formData: FormData) {
   });
 
   const templateIds = formData.getAll("templateIds").map(String).filter(Boolean);
-  if (formData.get("sendMsaNda") === "on") {
-    const msaNda = await prisma.buyerDocTemplate.findMany({
-      where: { key: { in: ["MSA", "NDA"] }, active: true },
-      select: { id: true },
-    });
-    for (const t of msaNda) if (!templateIds.includes(t.id)) templateIds.push(t.id);
+
+  const nda = await prisma.buyerDocTemplate.findFirst({ where: { key: "NDA", active: true }, select: { id: true } });
+  if (nda && !templateIds.includes(nda.id)) templateIds.push(nda.id); // NDA is mandatory, always attached
+
+  if (formData.get("sendMsa") === "on") {
+    const msa = await prisma.buyerDocTemplate.findFirst({ where: { key: "MSA", active: true }, select: { id: true } });
+    if (msa && !templateIds.includes(msa.id)) templateIds.push(msa.id);
   }
   if (templateIds.length > 0) {
     await prisma.vendorBuyerDoc.createMany({

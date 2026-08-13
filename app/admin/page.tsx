@@ -122,12 +122,12 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
   );
   const inFlight = inProgressList.length;
 
-  function msaNdaStatus(v: (typeof vendors)[number]): "done" | "in-progress" | "na" {
-    const hasMsa = v.buyerDocs.some((d) => d.template.key === "MSA");
-    if (!hasMsa) return "na";
-    return v.buyerDocs.every((d) => d.signedAt) ? "done" : "in-progress";
+  function buyerDocStatus(v: (typeof vendors)[number], key: "MSA" | "NDA"): "done" | "in-progress" | "na" {
+    const doc = v.buyerDocs.find((d) => d.template.key === key);
+    if (!doc) return "na";
+    return doc.signedAt ? "done" : "in-progress";
   }
-  const colCount = tab === "inprogress" ? 7 : 6;
+  const colCount = tab === "inprogress" ? 8 : 6;
   const spotlightKey = [sp.tab, sp.focus, sp.sort, sp.dir, sp.range].join("|");
 
   return (
@@ -208,7 +208,7 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
               <Link href={submittedSortHref} style={{ color: "inherit" }}>
                 VENDOR DOCUMENTS SUBMITTED{sortingBySubmitted ? (sortDir === "asc" ? " ▲" : " ▼") : ""}
               </Link>
-            </th>{tab === "inprogress" ? <th>Vendor MSA/NDA review</th> : null}<th></th></tr></thead>
+            </th>{tab === "inprogress" ? <><th>NDA</th><th>MSA</th></> : null}<th></th></tr></thead>
             <tbody>
               {tabbed.length === 0 ? (
                 <tr><td colSpan={colCount}><Empty title="No vendors here" hint="Nothing in this tab yet." /></td></tr>
@@ -220,9 +220,16 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
                   <td className="tnum">{fmtMoney(v.valueAmount)}</td>
                   <td className="tnum">{fmtDate(v.submittedAt)}</td>
                   {tab === "inprogress" ? (() => {
-                    const status = msaNdaStatus(v);
-                    const label = status === "done" ? "Done" : status === "in-progress" ? "In progress" : "Not-Applicable";
-                    return <td><Chip tone={status === "done" ? "good" : "neutral"}>{label}</Chip></td>;
+                    const label = (s: "done" | "in-progress" | "na") =>
+                      s === "done" ? "Done" : s === "in-progress" ? "In progress" : "Not-Applicable";
+                    const ndaStatus = buyerDocStatus(v, "NDA");
+                    const msaStatus = buyerDocStatus(v, "MSA");
+                    return (
+                      <>
+                        <td><Chip tone={ndaStatus === "done" ? "good" : "neutral"}>{label(ndaStatus)}</Chip></td>
+                        <td><Chip tone={msaStatus === "done" ? "good" : "neutral"}>{label(msaStatus)}</Chip></td>
+                      </>
+                    );
                   })() : null}
                   <td style={{ display: "flex", gap: 6 }}>
                     <Link className="btn sm" href={`/admin/vendors/${v.id}`}>View</Link>

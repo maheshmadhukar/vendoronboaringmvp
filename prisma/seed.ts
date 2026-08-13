@@ -400,6 +400,10 @@ async function main() {
       createdById: adminUser.id, role: "VENDOR", expiresAt: new Date(Date.now() + 7 * 864e5),
     },
   });
+  // NDA is always sent; MSA wasn't selected for this invite — demos the NDA-only shape.
+  if (buyerDocTemplates["NDA"]) {
+    await prisma.vendorBuyerDoc.create({ data: { vendorId: meridian.id, templateId: buyerDocTemplates["NDA"] } });
+  }
 
   // ============================================================
   // Generated historical vendors (~12 months) for analytics depth

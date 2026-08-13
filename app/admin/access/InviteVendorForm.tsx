@@ -8,7 +8,7 @@ export default function InviteVendorForm({ templates }: { templates: { id: strin
     inviteVendor,
     null as { error?: string; ok?: string; link?: string } | null
   );
-  const msaNda = templates.filter((t) => t.key === "MSA" || t.key === "NDA");
+  const msa = templates.filter((t) => t.key === "MSA");
   const others = templates.filter((t) => t.key !== "MSA" && t.key !== "NDA");
   return (
     <form action={action}>
@@ -26,9 +26,9 @@ export default function InviteVendorForm({ templates }: { templates: { id: strin
         <div className="field">
           <label>Buyer documents to send</label>
           <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-            {msaNda.length > 0 ? (
+            {msa.length > 0 ? (
               <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 400 }}>
-                <input type="checkbox" name="sendMsaNda" defaultChecked /> MSA &amp; NDA
+                <input type="checkbox" name="sendMsa" defaultChecked /> MSA
               </label>
             ) : null}
             {others.map((t) => (
@@ -37,7 +37,9 @@ export default function InviteVendorForm({ templates }: { templates: { id: strin
               </label>
             ))}
           </div>
-          <span className="hint">Attached to the vendor as soon as the invite is created.</span>
+          <span className="hint">
+            Attached to the vendor as soon as the invite is created. NDA is always sent for e-signature.
+          </span>
         </div>
       ) : null}
       {state?.error ? <div className="alert bad">{state.error}</div> : null}
