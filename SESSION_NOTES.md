@@ -21,8 +21,10 @@ integration — keep main's *features*, never resurrect iron-session/OTP/bcrypt.
   and keeps **both** the Phase 5 `RealtimeRefresh` mount and main's pagination/`SlaBreachPopup`.
 - `app/admin/page.tsx` auto-merged cleanly (kept Realtime + pagination).
 - ✅ conflict-marker-free · tsc clean · 29 tests green · **production build green (17 routes)**.
-- ⚠️ **Not browser-verified:** the SLA-breach popup *firing* (needs a live dept-manager login with a
-  breached vendor). Plumbing compiles + builds. Merge commit is **local, not pushed**.
+- ✅ **Browser-verified:** logged in as Finance mgr (adminfinance@buyer.com) → popup fired once
+  ("4 SLA breaches": Granite/Frontier/Westwind/Aravali); navigating away and back to /dept did **not**
+  re-fire it (flash consumed). The cookie-based flash on Supabase Auth works end-to-end.
+- Merge commit `04c66dd` is **local, not pushed**.
 
 ## 2026-08-13 — Supabase migration (Phases 0–3 of 7) — branch `supabase-changes`
 
