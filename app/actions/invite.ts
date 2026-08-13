@@ -5,6 +5,7 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { setSessionUser } from "@/lib/session";
 import { ROLE, VSTATUS } from "@/lib/constants";
+import { OTP_RE } from "@/lib/validation";
 
 async function validInvite(token: string) {
   const invite = await prisma.invite.findUnique({ where: { token } });
@@ -58,6 +59,7 @@ export async function verifyOtpAction(_prev: unknown, formData: FormData) {
 
   const invite = await validInvite(token);
   if (!invite) return { error: "This invite link is invalid or has expired." };
+  if (!OTP_RE.test(code)) return { error: "Enter the 6-digit code." };
 
   const email = invite.email.toLowerCase();
   const otp = await prisma.otpCode.findFirst({

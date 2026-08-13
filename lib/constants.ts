@@ -136,9 +136,10 @@ export const PIPELINE_STAGES = [
 // Demo login accounts (password: demo1234), shared by the login quick-fill
 // and the DEMO_MODE persona switcher.
 export const DEMO_PERSONAS = [
-  { label: "Admin", email: "admin@buyer.com" },
-  { label: "Finance Mgr", email: "adminfinance@buyer.com" },
-  { label: "Legal Mgr", email: "adminlegal@buyer.com" },
-  { label: "HR Mgr", email: "adminhr@buyer.com" },
-  { label: "Vendor (Anugrah)", email: "karan@anugrahfreight.in" },
+  { label: "Admin", email: "admin@buyer.com", role: "ADMIN" },
+  { label: "Finance Mgr", email: "adminfinance@buyer.com", role: "DEPT" },
+  { label: "Legal Mgr", email: "adminlegal@buyer.com", role: "DEPT" },
+  { label: "HR Mgr", email: "adminhr@buyer.com", role: "DEPT" },
+  { label: "Vendor (Anugrah)", email: "karan@anugrahfreight.in", role: "VENDOR" },
+  { label: "Vendor (Frontier — docs pending)", email: "priya@frontiertextiles.in", role: "VENDOR" },
 ] as const;

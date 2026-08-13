@@ -10,7 +10,7 @@ export default function VerifyForm({ token }: { token: string }) {
       <input type="hidden" name="token" value={token} />
       <div className="field">
         <label>One-time code</label>
-        <input name="code" inputMode="numeric" placeholder="6-digit code" autoComplete="one-time-code" />
+        <input name="code" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} placeholder="6-digit code" autoComplete="one-time-code" />
       </div>
       {state?.error ? <div className="alert bad" style={{ marginBottom: 14 }}>{state.error}</div> : null}
       <button className="btn primary" style={{ width: "100%" }} disabled={pending}>

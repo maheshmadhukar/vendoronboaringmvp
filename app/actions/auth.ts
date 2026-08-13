@@ -5,11 +5,13 @@ import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { setSessionUser, clearSession, homeFor, getSession, requireUser, isDemoModeEnabled } from "@/lib/session";
 import { ROLE } from "@/lib/constants";
+import { EMAIL_RE } from "@/lib/validation";
 
 export async function loginAction(_prev: unknown, formData: FormData) {
   const email = String(formData.get("email") || "").trim().toLowerCase();
   const password = String(formData.get("password") || "");
   if (!email || !password) return { error: "Enter email and password." };
+  if (!EMAIL_RE.test(email)) return { error: "Enter a valid email address." };
 
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user || !user.active || !user.passwordHash)

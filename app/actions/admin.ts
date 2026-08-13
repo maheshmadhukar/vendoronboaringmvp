@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/session";
 import { VSTATUS } from "@/lib/constants";
 import { recomputeVendorStatus, notify, audit, getConfig } from "@/lib/workflow";
+import { EMAIL_RE } from "@/lib/validation";
 
 const DOC_FORMATS = ["doc", "pdf", "jpeg"] as const;
 
@@ -25,6 +26,7 @@ export async function inviteVendor(_prev: unknown, formData: FormData) {
   const name = String(formData.get("name") || "").trim();
   const email = String(formData.get("email") || "").trim().toLowerCase();
   if (!name || !email) return { error: "Vendor name and email are required." };
+  if (!EMAIL_RE.test(email)) return { error: "Enter a valid work email address." };
 
   const dupe = await prisma.vendor.findFirst({
     where: { OR: [{ companyEmail: email }, { name: { equals: name } }] },
@@ -66,6 +68,7 @@ export async function updateDeptManagerEmail(_prev: unknown, formData: FormData)
   const userId = String(formData.get("userId") || "");
   const email = String(formData.get("email") || "").trim().toLowerCase();
   if (!email) return { error: "Email cannot be blank." };
+  if (!EMAIL_RE.test(email)) return { error: "Enter a valid email address." };
 
   const dupe = await prisma.user.findUnique({ where: { email } });
   if (dupe && dupe.id !== userId) return { error: "A user with this email already exists." };

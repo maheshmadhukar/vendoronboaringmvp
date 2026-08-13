@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { fmtMoney, fmtMoneyCompact } from "@/lib/format";
 import { resolvePeriod, previousPeriod, type PeriodMode } from "@/lib/period";
 import {
-  computeExecutive, computeFunnel, computePipelineHealth, computeDeptBottlenecks,
+  computeExecutive, computeFunnel, computeDeptBottlenecks,
   computeEngagement, computeQuality, computeTrends, computeStageTime, type VendorRow,
 } from "@/lib/analytics";
 import SectionHeader from "./components/SectionHeader";
@@ -45,7 +45,6 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
 
   const exec = computeExecutive(vendors, period, prev);
   const funnel = computeFunnel(vendors, period);
-  const health = computePipelineHealth(vendors);
   const { speed, queue } = computeDeptBottlenecks(vendors, departments, period);
   const engagement = computeEngagement(vendors, docTypeCount);
   const quality = computeQuality(vendors, period);
@@ -111,12 +110,6 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
           )}
           <span className="sub" style={{ marginLeft: "auto" }}>{period.rangeLabel}</span>
         </div>
-        <div className="cat-key">
-          <span><i style={{ background: "var(--accent-fill)", border: "1px solid var(--accent-ink)" }} />Leading = predictive</span>
-          <span><i style={{ background: "var(--neutral-bg)" }} />Lagging = historical</span>
-          <span><i style={{ background: "var(--good-bg)" }} />Business metric</span>
-          <span><i style={{ background: "var(--info-bg)" }} />User / operational</span>
-        </div>
       </div>
 
       {/* Business Metrics / Performance Metrics tabs */}
@@ -134,10 +127,10 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
               help="What onboarding has delivered, this period."
             />
             <div className="grid-4">
-              <KpiCard label="Vendors onboarded" value={String(exec.onboarded.value)} tags={["lag", "biz"]} deltaPct={exec.onboarded.deltaPct} sub={`${period.label} · completed onboardings`} />
-              <KpiCard label="Total onboarded value" value={fmtMoneyCompact(exec.onboardedValue.value)} tags={["lag", "biz"]} deltaPct={exec.onboardedValue.deltaPct} sub="Contract value onboarded" />
-              <KpiCard label="Avg onboarding time" value={exec.avgOnboardDays.has ? `${fmtDays(exec.avgOnboardDays.value)}d` : "—"} tags={["lag", "biz"]} deltaPct={exec.avgOnboardDays.deltaPct} higherIsBetter={false} sub="Submit → onboarded" />
-              <KpiCard label="Acceptance rate" value={exec.acceptanceRate.has ? `${exec.acceptanceRate.value}%` : "—"} tags={["lag", "biz"]} deltaPct={exec.acceptanceRate.deltaPct} deltaSuffix="pt" sub="Approved of decided" />
+              <KpiCard label="Vendors onboarded" value={String(exec.onboarded.value)} deltaPct={exec.onboarded.deltaPct} sub={`${period.label} · completed onboardings`} />
+              <KpiCard label="Total onboarded value" value={fmtMoneyCompact(exec.onboardedValue.value)} deltaPct={exec.onboardedValue.deltaPct} sub="Contract value onboarded" />
+              <KpiCard label="Avg onboarding time" value={exec.avgOnboardDays.has ? `${fmtDays(exec.avgOnboardDays.value)}d` : "—"} deltaPct={exec.avgOnboardDays.deltaPct} higherIsBetter={false} sub="Submit → onboarded" />
+              <KpiCard label="Acceptance rate" value={exec.acceptanceRate.has ? `${exec.acceptanceRate.value}%` : "—"} deltaPct={exec.acceptanceRate.deltaPct} deltaSuffix="pt" sub="Approved of decided" />
             </div>
           </div>
 
@@ -145,39 +138,21 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
           <div className="an-section">
             <SectionHeader
               title="Vendor Pipeline"
-              tags={["lead", "biz"]}
               help={`Where the cohort invited in ${period.label} is today, and what the in-flight pipeline is likely to convert to.`}
             />
-            <div className="pipeline-split">
-              <ChartCard title="Onboarding funnel" sub={`Cohort invited in ${period.label} · conversion and drop-off by stage`}>
-                {funnel.stages[0].count === 0 ? (
-                  <Empty title="No vendors invited in this period" hint="Pick a wider range to see the funnel." />
-                ) : (
-                  <>
-                    <FunnelBars stages={funnel.stages} />
-                    <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14, alignItems: "center", fontSize: 12.5 }}>
-                      <span className="sub">Rejected (of cohort):</span>
-                      <span className="tnum" style={{ fontWeight: 700, color: funnel.rejected ? "var(--bad)" : "var(--ink-faint)" }}>{funnel.rejected}</span>
-                    </div>
-                  </>
-                )}
-              </ChartCard>
-
-              <ChartCard title="Pipeline health" sub="Leading view of in-flight work">
-                <div>
-                  <div className="stat-row"><div className="sr-top"><span className="sr-label">Active vendors in progress</span><span className="sr-value">{health.active}</span></div></div>
-                  <div className="stat-row"><div className="sr-top"><span className="sr-label">Expected onboarding value</span><span className="sr-value">{fmtMoney(health.expectedValue)}</span></div></div>
-                  <div className="stat-row">
-                    <div className="sr-top"><span className="sr-label">Projected approvals (run-rate)</span><span className="sr-value">{health.projectedApprovals ?? "—"}</span></div>
-                    <span className="sub" style={{ fontSize: 11 }}>Active × historical acceptance {health.acceptRatePct != null ? `(${health.acceptRatePct}%)` : ""}</span>
+            <ChartCard title="Onboarding funnel" sub={`Cohort invited in ${period.label} · conversion and drop-off by stage`}>
+              {funnel.stages[0].count === 0 ? (
+                <Empty title="No vendors invited in this period" hint="Pick a wider range to see the funnel." />
+              ) : (
+                <>
+                  <FunnelBars stages={funnel.stages} />
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14, alignItems: "center", fontSize: 12.5 }}>
+                    <span className="sub">Rejected (of cohort):</span>
+                    <span className="tnum" style={{ fontWeight: 700, color: funnel.rejected ? "var(--bad)" : "var(--ink-faint)" }}>{funnel.rejected}</span>
                   </div>
-                  <div className="stat-row">
-                    <div className="sr-top"><span className="sr-label">On track vs at risk</span><span className="sr-value"><span style={{ color: "var(--good)" }}>{health.onTrack}</span> / <span style={{ color: health.atRisk ? "var(--bad)" : "var(--ink-faint)" }}>{health.atRisk}</span></span></div>
-                    <span className="sub" style={{ fontSize: 11 }}>At-risk = a pending review already past SLA</span>
-                  </div>
-                </div>
-              </ChartCard>
-            </div>
+                </>
+              )}
+            </ChartCard>
           </div>
         </>
       ) : (
@@ -189,8 +164,8 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
               help="Pending work and where you're most at risk of missing SLA."
             />
             <div className="grid-2">
-              <KpiCard label="Pending approvals" value={String(exec.pendingApprovals)} tags={["lead", "user"]} sub="Department reviews awaiting action" />
-              <KpiCard label="Vendors at SLA risk" value={String(exec.atRisk)} tags={["lead", "user"]} sub="Amber or breached, needs attention" />
+              <KpiCard label="Pending approvals" value={String(exec.pendingApprovals)} sub="Department reviews awaiting action" />
+              <KpiCard label="Vendors at SLA risk" value={String(exec.atRisk)} sub="Amber or breached, needs attention" />
             </div>
           </div>
 
@@ -198,19 +173,22 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
           <div className="an-section">
             <SectionHeader
               title="Trends"
-              tags={["lag", "biz"]}
               help="Whether rising onboarding volume is straining operational efficiency, and where end-to-end time is spent."
             />
-            <ChartCard title="Onboardings & cycle time" sub="Monthly, last 12 months — volume vs average onboarding time">
-              <TrendLineChart data={trends} />
-            </ChartCard>
+            <div className="grid-2">
+              <ChartCard title="Vendors onboarded" sub="Monthly, last 12 months">
+                <TrendLineChart data={trends} metric="onboarded" />
+              </ChartCard>
+              <ChartCard title="Avg onboarding time" sub="Monthly, last 12 months — days, submit → onboarded">
+                <TrendLineChart data={trends} metric="avgDays" />
+              </ChartCard>
+            </div>
           </div>
 
           {/* ============ Department Bottlenecks ============ */}
           <div className="an-section">
             <SectionHeader
               title="Department Bottlenecks"
-              tags={["lead", "user"]}
               help="Which department is slowing onboarding down — the queue predicts future delays before they become breaches."
             />
             <div className="grid-2">
@@ -258,7 +236,6 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
           <div className="an-section">
             <SectionHeader
               title="Vendor Behavior & Quality"
-              tags={["lead", "user"]}
               help="How vendors move through onboarding, and how much rework the process creates."
             />
             <ChartCard title="Rework & quality" sub={`Change requests, revisions, and why documents get sent back · ${period.label}`}>

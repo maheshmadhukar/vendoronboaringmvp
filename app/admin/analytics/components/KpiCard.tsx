@@ -1,9 +1,6 @@
-import MetricBadge, { type BadgeKind } from "./MetricBadge";
-
 export default function KpiCard({
   label,
   value,
-  tags = [],
   deltaPct,
   deltaSuffix = "%",
   higherIsBetter = true,
@@ -11,7 +8,6 @@ export default function KpiCard({
 }: {
   label: string;
   value: string;
-  tags?: BadgeKind[];
   deltaPct?: number | null;
   deltaSuffix?: string;
   higherIsBetter?: boolean;
@@ -35,9 +31,6 @@ export default function KpiCard({
     <div className="kpi">
       <div className="kpi-top">
         <span className="kpi-label">{label}</span>
-        {tags.length > 0 ? (
-          <span className="kpi-badges">{tags.map((t) => <MetricBadge key={t} kind={t} />)}</span>
-        ) : null}
       </div>
       <div className="kpi-value">{value}</div>
       {deltaEl ?? <span className="kpi-delta flat">—</span>}

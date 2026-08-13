@@ -131,28 +131,6 @@ export function computeFunnel(vendors: VendorRow[], period: Range): { stages: Fu
   return { stages, rejected };
 }
 
-export function computePipelineHealth(vendors: VendorRow[]) {
-  const active = vendors.filter(isActivePipeline);
-  const expectedValue = active.reduce((s, v) => s + (v.valueAmount ?? 0), 0);
-  // Historical acceptance rate → run-rate projection of how many of the active
-  // pipeline are likely to be approved. Transparent heuristic, not a forecast score.
-  const settled = vendors.filter((v) => v.status === VSTATUS.ONBOARDED || v.status === VSTATUS.REJECTED);
-  const accepted = settled.filter((v) => v.status === VSTATUS.ONBOARDED).length;
-  const acceptRate = settled.length ? accepted / settled.length : null;
-  const projectedApprovals = acceptRate != null ? Math.round(active.length * acceptRate) : null;
-  const atRiskCount = active.filter((v) =>
-    v.deptReviews.some((r) => r.department.key !== DEPT.PROCUREMENT && r.status === REVIEW_STATUS.PENDING && (r.everBreached || isBreached(r.slaDueAt, r.slaState)))
-  ).length;
-  return {
-    active: active.length,
-    expectedValue,
-    acceptRatePct: acceptRate != null ? Math.round(acceptRate * 100) : null,
-    projectedApprovals,
-    onTrack: active.length - atRiskCount,
-    atRisk: atRiskCount,
-  };
-}
-
 // ---------------------------------------------------------------------------
 // Section 3 — Department Bottlenecks
 // ---------------------------------------------------------------------------

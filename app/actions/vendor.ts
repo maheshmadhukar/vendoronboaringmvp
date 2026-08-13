@@ -7,8 +7,7 @@ import { requireVendor } from "@/lib/session";
 import { VSTATUS, DOC_STATUS } from "@/lib/constants";
 import { createDeptReviews, recomputeVendorStatus, notifyDept, notify, getConfig, audit } from "@/lib/workflow";
 import { getVendorDocTypes } from "@/lib/vendor";
-
-const GSTIN_RE = /^[0-9]{2}[A-Z0-9]{10}[0-9A-Z]{3}$/i;
+import { EMAIL_RE, PHONE_RE, GSTIN_RE } from "@/lib/validation";
 
 // Save/update the vendor's own business details (also used for draft save).
 export async function saveBusinessDetails(_prev: unknown, formData: FormData) {
@@ -18,11 +17,16 @@ export async function saveBusinessDetails(_prev: unknown, formData: FormData) {
   const bankAccount = String(formData.get("bankAccount") || "").trim();
   const address = String(formData.get("address") || "").trim();
   const phone = String(formData.get("phone") || "").trim();
+  const companyEmail = String(formData.get("companyEmail") || "").trim();
 
   if (!address || !phone || !bankAccount)
     return { error: "Address, phone and bank account details are mandatory." };
+  if (!PHONE_RE.test(phone))
+    return { error: "Enter a valid 10-digit mobile number." };
   if (gstin && !GSTIN_RE.test(gstin))
     return { error: "GSTIN format looks invalid (expected e.g. 27ABCDE1234F1Z5)." };
+  if (companyEmail && !EMAIL_RE.test(companyEmail))
+    return { error: "Company email format looks invalid." };
 
   // Duplicate-vendor guard: same GSTIN on a different vendor record.
   if (gstin) {
@@ -40,7 +44,7 @@ export async function saveBusinessDetails(_prev: unknown, formData: FormData) {
       contactPerson: String(formData.get("contactPerson") || "").trim() || null,
       gstin: gstin || null,
       turnover: formData.get("turnover") ? Number(formData.get("turnover")) : null,
-      companyEmail: String(formData.get("companyEmail") || "").trim() || null,
+      companyEmail: companyEmail || null,
       // Stamp the moment the vendor first begins onboarding (engagement analytics).
       onboardingStartedAt: user.vendor?.onboardingStartedAt ?? new Date(),
     },
