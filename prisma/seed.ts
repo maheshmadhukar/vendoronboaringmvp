@@ -63,7 +63,7 @@ async function main() {
 
   // Admin
   const adminUser = await prisma.user.create({
-    data: { email: "admin@buyer.com", name: "Aarti Nair", role: "ADMIN", passwordHash: hash },
+    data: { email: "admin@buyer.com", name: "Shravan Tickoo", role: "ADMIN", passwordHash: hash },
   });
 
   // Dept managers — one per department (Procurement has no standalone login;
