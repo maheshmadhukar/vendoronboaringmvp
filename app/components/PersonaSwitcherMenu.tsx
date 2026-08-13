@@ -23,8 +23,8 @@ export default function PersonaSwitcherMenu({
         <div
           style={{
             position: "absolute", right: 0, top: "calc(100% + 4px)", zIndex: 20,
-            background: "var(--surface, #fff)", border: "1px solid var(--border)",
-            borderRadius: 8, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", minWidth: 200, padding: 6,
+            background: "var(--panel)", border: "1px solid var(--border)",
+            borderRadius: 8, boxShadow: "var(--shadow-md)", minWidth: 200, padding: 6,
           }}
           onClick={() => setOpen(false)}
         >

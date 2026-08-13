@@ -10,7 +10,7 @@ import { fmtDate } from "@/lib/format";
 import { isBreached, slaVisual, workingDaysLeft } from "@/lib/sla";
 import { resolveDashboardRange } from "@/lib/period";
 
-type SearchParams = { range?: string };
+type SearchParams = { range?: string; tab?: string };
 
 export default async function DeptQueue({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const user = await requireDept();
@@ -134,39 +134,76 @@ export default async function DeptQueue({ searchParams }: { searchParams: Promis
 
 async function OnboardedVendors({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const sp = await searchParams;
+  const tab: "onboarded" | "drafts" = sp.tab === "drafts" ? "drafts" : "onboarded";
   const { mode: rangeMode, from } = resolveDashboardRange(sp.range);
 
-  const vendors = await prisma.vendor.findMany({
-    where: { status: VSTATUS.ONBOARDED, onboardedAt: { gte: from, lte: new Date() } },
-    orderBy: { onboardedAt: "desc" },
-  });
+  const [onboardedVendors, draftVendors] = await Promise.all([
+    prisma.vendor.findMany({
+      where: { status: VSTATUS.ONBOARDED, onboardedAt: { gte: from, lte: new Date() } },
+      orderBy: { onboardedAt: "desc" },
+    }),
+    prisma.vendor.findMany({
+      where: { status: VSTATUS.DRAFT },
+      orderBy: { createdAt: "desc" },
+    }),
+  ]);
+  const vendors = tab === "drafts" ? draftVendors : onboardedVendors;
 
   return (
     <Shell active="procurement" title="Procurement — Onboarded Vendors">
       <div className="page-head">
         <div>
-          <h1>Onboarded Vendors</h1>
-          <p>Vendors who have completed onboarding. View their full submitted document set.</p>
+          <h1>{tab === "drafts" ? "Draft Vendors" : "Onboarded Vendors"}</h1>
+          <p>
+            {tab === "drafts"
+              ? "Vendor records created but not yet invited through or submitted."
+              : "Vendors who have completed onboarding. View their full submitted document set."}
+          </p>
         </div>
-        <RangeSelect mode={rangeMode} />
+        {tab === "onboarded" ? <RangeSelect mode={rangeMode} /> : null}
+      </div>
+
+      <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+        <Link
+          className={`btn sm ${tab === "onboarded" ? "primary" : "ghost"}`}
+          href={`?tab=onboarded${sp.range ? `&range=${sp.range}` : ""}`}
+        >
+          Onboarded Vendors ({onboardedVendors.length})
+        </Link>
+        <Link className={`btn sm ${tab === "drafts" ? "primary" : "ghost"}`} href="?tab=drafts">
+          See Drafts ({draftVendors.length})
+        </Link>
       </div>
 
       <div className="card">
         {vendors.length === 0 ? (
-          <Empty title="No onboarded vendors in this window" hint="Try a wider date range." />
+          tab === "drafts" ? (
+            <Empty title="No draft vendors" hint="Nothing here right now." />
+          ) : (
+            <Empty title="No onboarded vendors in this window" hint="Try a wider date range." />
+          )
         ) : (
           <div className="table-wrap">
             <table className="table">
-              <thead><tr><th>Vendor</th><th>Category</th><th>Onboarded</th><th></th></tr></thead>
+              <thead><tr><th>Vendor</th><th>Category</th><th>{tab === "drafts" ? "Created" : "Onboarded"}</th><th></th></tr></thead>
               <tbody>
-                {vendors.map((v) => (
-                  <tr key={v.id}>
-                    <td className="strong">{v.name}</td>
-                    <td className="sub">{v.category}</td>
-                    <td className="tnum">{fmtDate(v.onboardedAt)}</td>
-                    <td><Link className="btn sm" href={`/dept/onboarded/${v.id}`}>View</Link></td>
-                  </tr>
-                ))}
+                {tab === "drafts"
+                  ? draftVendors.map((v) => (
+                      <tr key={v.id}>
+                        <td className="strong">{v.name}</td>
+                        <td className="sub">{v.category}</td>
+                        <td className="tnum">{fmtDate(v.createdAt)}</td>
+                        <td><Link className="btn sm" href={`/admin/vendors/${v.id}`}>View</Link></td>
+                      </tr>
+                    ))
+                  : onboardedVendors.map((v) => (
+                      <tr key={v.id}>
+                        <td className="strong">{v.name}</td>
+                        <td className="sub">{v.category}</td>
+                        <td className="tnum">{fmtDate(v.onboardedAt)}</td>
+                        <td><Link className="btn sm" href={`/dept/onboarded/${v.id}`}>View</Link></td>
+                      </tr>
+                    ))}
               </tbody>
             </table>
           </div>

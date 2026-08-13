@@ -78,7 +78,12 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
   // JS). A vendor is in-window if it was created OR submitted on/after the start;
   // the old upper bound was `now`, a no-op for past timestamps, so it's dropped.
   const vendors = await prisma.vendor.findMany({
-    where: { OR: [{ createdAt: { gte: rangeFrom } }, { submittedAt: { gte: rangeFrom } }] },
+    where: {
+      AND: [
+        { status: { not: VSTATUS.DRAFT } },
+        { OR: [{ createdAt: { gte: rangeFrom } }, { submittedAt: { gte: rangeFrom } }] },
+      ],
+    },
     orderBy: { updatedAt: "desc" },
     include: { deptReviews: { include: { department: true } }, buyerDocs: { include: { template: true } } },
   });
