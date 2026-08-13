@@ -6,11 +6,13 @@ import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { homeFor, getCurrentUser, isImpersonating, isDemoModeEnabled, DEMO_COOKIE, setLoginFlash, clearLoginFlash } from "@/lib/session";
 import { ROLE } from "@/lib/constants";
+import { EMAIL_RE } from "@/lib/validation";
 
 export async function loginAction(_prev: unknown, formData: FormData) {
   const email = String(formData.get("email") || "").trim().toLowerCase();
   const password = String(formData.get("password") || "");
   if (!email || !password) return { error: "Enter email and password." };
+  if (!EMAIL_RE.test(email)) return { error: "Enter a valid email address." };
 
   const supabase = await createClient();
   const { error } = await supabase.auth.signInWithPassword({ email, password });

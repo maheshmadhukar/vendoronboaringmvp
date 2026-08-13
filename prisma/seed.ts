@@ -341,7 +341,7 @@ async function main() {
     name: "Northline Steel Components",
     email: "ops@northlinesteel.in",
     accountName: "Meera Joshi",
-    withAccount: true,
+    withAccount: false,
     status: "IN_REVIEW",
     submittedDaysAgo: 1,
     value: 2400000,
@@ -422,14 +422,34 @@ async function main() {
     await prisma.vendorBuyerDoc.create({ data: { vendorId: meridian.id, templateId: buyerDocTemplates["NDA"] } });
   }
 
+  // Frontier Textiles — active vendor account, registered & started onboarding
+  // but hasn't submitted (no documents yet) — demos the document-upload flow.
+  await makeVendor({
+    name: "Frontier Textiles",
+    email: "priya@frontiertextiles.in",
+    accountName: "Priya Nair",
+    withAccount: true,
+    status: "DRAFT_STARTED",
+    createdDaysAgo: 3,
+  });
+
   // ============================================================
   // Generated historical vendors (~12 months) for analytics depth
   // ============================================================
+  // Kept comfortably above the max possible number of generated vendors
+  // (~52 across all cohorts below) so genIndex never wraps around and no
+  // two generated vendors ever share a first name (was a real bug: with
+  // only 34 names, look-alike pairs like "Blue Ridge Industries" (onboarded)
+  // and "Blue Ridge Technologies" (invited) were guaranteed).
   const FIRST = [
     "Apex", "Blue Ridge", "Crestline", "Deccan", "Everest", "Falcon", "Ganges", "Harbour",
     "Indus", "Jupiter", "Kaveri", "Lotus", "Meghna", "Nimbus", "Orion", "Pioneer", "Quantum",
     "Rockwell", "Summit", "Tandem", "United", "Vega", "Westwind", "Yamuna", "Zenith", "Aravali",
     "Beacon", "Cobalt", "Delta", "Emerald", "Frontier", "Granite", "Horizon", "Ivory",
+    "Junction", "Keystone", "Lighthouse", "Meridian West", "Northgate", "Oakridge", "Prospect",
+    "Redwood", "Silverline", "Trailhead", "Umbra", "Vantage", "Wavecrest", "Anchor", "Bellwood",
+    "Cascade", "Driftwood", "Elmhurst", "Fairview", "Glenmark", "Highfield", "Ironwood", "Larkspur",
+    "Mosswood", "Newbridge",
   ];
   const LAST = ["Industries", "Solutions", "Technologies", "Enterprises", "Logistics", "Systems", "Traders", "Associates", "Works", "Supplies"];
 
@@ -448,11 +468,11 @@ async function main() {
       const submittedDaysAgo = randInt(lo, hi);
       const onboardedDaysAgo = Math.max(1, submittedDaysAgo - randInt(3, 14));
       const breached = Math.random() < 0.25;
-      const name = `${FIRST[genIndex % FIRST.length]} ${pick(LAST)}`;
+      const name = `${FIRST[genIndex]} ${pick(LAST)}`;
       genIndex++;
       await makeVendor({
         name,
-        email: `contact@${name.toLowerCase().replace(/[^a-z]/g, "")}.in`,
+        email: `contact@${name.toLowerCase().replace(/[^a-z]/g, "")}${genIndex}.in`,
         createdByProc: true,
         status: "ONBOARDED",
         submittedDaysAgo,
@@ -476,13 +496,13 @@ async function main() {
     const badKey = pick(["BANK_STMT", "GST_CERT", "COI", "TURNOVER", "PAN"] as const);
     const badDept = deptOfDocKey(badKey);
     const reason = pick(REASONS);
-    const name = `${FIRST[genIndex % FIRST.length]} ${pick(LAST)}`;
+    const name = `${FIRST[genIndex]} ${pick(LAST)}`;
     genIndex++;
     const reviews: Record<string, ReviewSpec> = { PROCUREMENT: { status: "APPROVED", decidedDaysAgo: submittedDaysAgo - 2 }, FINANCE: { status: "APPROVED", decidedDaysAgo: submittedDaysAgo - 3 }, LEGAL: { status: "APPROVED", decidedDaysAgo: submittedDaysAgo - 3 }, HR: { status: "APPROVED", decidedDaysAgo: submittedDaysAgo - 2 } };
     reviews[badDept] = { status: "REJECTED", comment: "Document could not be verified.", decidedDaysAgo: submittedDaysAgo - randInt(2, 6), breached: Math.random() < 0.3 };
     await makeVendor({
       name,
-      email: `contact@${name.toLowerCase().replace(/[^a-z]/g, "")}.in`,
+      email: `contact@${name.toLowerCase().replace(/[^a-z]/g, "")}${genIndex}.in`,
       createdByProc: true,
       status: "REJECTED",
       submittedDaysAgo,
@@ -499,7 +519,7 @@ async function main() {
   for (let i = 0; i < 6; i++) {
     const submittedDaysAgo = randInt(1, 9);
     const breach = i % 3 === 0;
-    const name = `${FIRST[genIndex % FIRST.length]} ${pick(LAST)}`;
+    const name = `${FIRST[genIndex]} ${pick(LAST)}`;
     genIndex++;
     const reviews: Record<string, ReviewSpec> = {
       PROCUREMENT: { status: pick(["APPROVED", "PENDING"]), decidedDaysAgo: submittedDaysAgo - 1 },
@@ -509,7 +529,7 @@ async function main() {
     };
     const v = await makeVendor({
       name,
-      email: `contact@${name.toLowerCase().replace(/[^a-z]/g, "")}.in`,
+      email: `contact@${name.toLowerCase().replace(/[^a-z]/g, "")}${genIndex}.in`,
       createdByProc: true,
       status: "IN_REVIEW",
       submittedDaysAgo,
@@ -532,13 +552,13 @@ async function main() {
     const cKey = pick(["BANK_STMT", "GST_CERT", "AADHAAR", "COC"] as const);
     const cDept = deptOfDocKey(cKey);
     const resolved = Math.random() < 0.5;
-    const name = `${FIRST[genIndex % FIRST.length]} ${pick(LAST)}`;
+    const name = `${FIRST[genIndex]} ${pick(LAST)}`;
     genIndex++;
     const reviews: Record<string, ReviewSpec> = { PROCUREMENT: { status: "APPROVED", decidedDaysAgo: submittedDaysAgo - 1 }, FINANCE: { status: "PENDING" }, LEGAL: { status: "PENDING" }, HR: { status: "PENDING" } };
     reviews[cDept] = { status: "CHANGES_REQUESTED" };
     await makeVendor({
       name,
-      email: `contact@${name.toLowerCase().replace(/[^a-z]/g, "")}.in`,
+      email: `contact@${name.toLowerCase().replace(/[^a-z]/g, "")}${genIndex}.in`,
       createdByProc: true,
       status: "CHANGES_REQUESTED",
       submittedDaysAgo,
@@ -555,13 +575,13 @@ async function main() {
   // Top-of-funnel cohort: invited (no account yet), registered-but-not-started,
   // and started-but-not-submitted — none of these have documents or reviews.
   for (let i = 0; i < 3; i++) {
-    await makeVendor({ name: `${FIRST[genIndex++ % FIRST.length]} ${pick(LAST)}`, createdByProc: true, status: "INVITED", createdDaysAgo: randInt(1, 20) });
+    await makeVendor({ name: `${FIRST[genIndex++]} ${pick(LAST)}`, createdByProc: true, status: "INVITED", createdDaysAgo: randInt(1, 20) });
   }
   for (let i = 0; i < 3; i++) {
-    await makeVendor({ name: `${FIRST[genIndex++ % FIRST.length]} ${pick(LAST)}`, createdByProc: true, status: "DRAFT_REGISTERED", createdDaysAgo: randInt(3, 30) });
+    await makeVendor({ name: `${FIRST[genIndex++]} ${pick(LAST)}`, createdByProc: true, status: "DRAFT_REGISTERED", createdDaysAgo: randInt(3, 30) });
   }
   for (let i = 0; i < 3; i++) {
-    await makeVendor({ name: `${FIRST[genIndex++ % FIRST.length]} ${pick(LAST)}`, createdByProc: true, status: "DRAFT_STARTED", createdDaysAgo: randInt(3, 30) });
+    await makeVendor({ name: `${FIRST[genIndex++]} ${pick(LAST)}`, createdByProc: true, status: "DRAFT_STARTED", createdDaysAgo: randInt(3, 30) });
   }
 
   // A few seed notifications
@@ -592,7 +612,8 @@ async function main() {
   console.log("  Finance mgr     adminfinance@buyer.com");
   console.log("  Legal mgr       adminlegal@buyer.com");
   console.log("  HR mgr          adminhr@buyer.com");
-  console.log("  Vendor          karan@anugrahfreight.in");
+  console.log("  Vendor          karan@anugrahfreight.in (mid-review)");
+  console.log("  Vendor          priya@frontiertextiles.in (docs not uploaded yet)");
   console.log("  (Procurement has no login — sign in as Admin and use the Procurement Review nav link)");
   console.log(`\nInvite/OTP signup demo: /invite/${inviteToken}\n`);
 }

@@ -25,7 +25,16 @@ export default function BusinessDetailsForm({ vendor, editable }: { vendor: V; e
         </div>
         <div className="field">
           <label>Phone number <span className="req">*</span></label>
-          <input name="phone" defaultValue={vendor.phone ?? ""} disabled={dis} />
+          <input
+            name="phone"
+            type="tel"
+            inputMode="numeric"
+            pattern="[6-9][0-9]{9}"
+            maxLength={10}
+            title="10-digit mobile number starting with 6-9"
+            defaultValue={vendor.phone ?? ""}
+            disabled={dis}
+          />
         </div>
         <div className="field">
           <label>Bank account details <span className="req">*</span></label>
@@ -37,7 +46,15 @@ export default function BusinessDetailsForm({ vendor, editable }: { vendor: V; e
         </div>
         <div className="field">
           <label>GSTIN</label>
-          <input name="gstin" defaultValue={vendor.gstin ?? ""} disabled={dis} placeholder="27ABCDE1234F1Z5" />
+          <input
+            name="gstin"
+            pattern="[0-9]{2}[A-Za-z0-9]{10}[0-9A-Za-z]{3}"
+            maxLength={15}
+            title="15-character GSTIN, e.g. 27ABCDE1234F1Z5"
+            defaultValue={vendor.gstin ?? ""}
+            disabled={dis}
+            placeholder="27ABCDE1234F1Z5"
+          />
           <span className="hint">Validated for format; duplicates are blocked.</span>
         </div>
         <div className="field">
