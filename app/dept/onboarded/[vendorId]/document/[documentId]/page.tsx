@@ -3,9 +3,11 @@ import { redirect } from "next/navigation";
 import Shell from "@/app/components/Shell";
 import MockDocumentContent from "@/app/components/MockDocumentContent";
 import DownloadDocumentButton from "@/app/components/DownloadDocumentButton";
+import DocumentFileView from "@/app/components/DocumentFileView";
 import { requireAdmin } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { getDocumentContent, isRichDocType, buildDocumentText } from "@/lib/documentContent";
+import { isStoredObject, signedUrl } from "@/lib/storage";
 import { VSTATUS } from "@/lib/constants";
 
 export default async function OnboardedDocumentPage({
@@ -31,6 +33,10 @@ export default async function OnboardedDocumentPage({
     { documentTypeName: document.documentType.name, vendorName: document.vendor.name, filename: document.filename },
     content,
   );
+  const fileUrl = !rich && isStoredObject(document.storedPath) ? await signedUrl(document.storedPath) : null;
+  const downloadUrl = !rich && isStoredObject(document.storedPath)
+    ? await signedUrl(document.storedPath, { download: document.filename ?? undefined })
+    : null;
 
   return (
     <Shell
@@ -49,10 +55,18 @@ export default async function OnboardedDocumentPage({
           <h1>{document.documentType.name}</h1>
           <p>{document.vendor.name} · {document.filename ?? "not uploaded"}</p>
         </div>
-        <DownloadDocumentButton filename={filename} text={text} />
+        {rich ? (
+          <DownloadDocumentButton filename={filename} text={text} />
+        ) : downloadUrl ? (
+          <a className="btn sm primary" href={downloadUrl}>Download</a>
+        ) : null}
       </div>
 
-      <MockDocumentContent content={content} rich={rich} />
+      {rich ? (
+        <MockDocumentContent content={content} rich={rich} />
+      ) : (
+        <DocumentFileView url={fileUrl} filename={document.filename} />
+      )}
     </Shell>
   );
 }

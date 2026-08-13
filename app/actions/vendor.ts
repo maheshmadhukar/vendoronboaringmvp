@@ -7,6 +7,7 @@ import { requireVendor } from "@/lib/session";
 import { VSTATUS, DOC_STATUS } from "@/lib/constants";
 import { createDeptReviews, recomputeVendorStatus, notifyDept, notify, getConfig, audit } from "@/lib/workflow";
 import { getVendorDocTypes } from "@/lib/vendor";
+import { documentKey, uploadObject } from "@/lib/storage";
 
 const GSTIN_RE = /^[0-9]{2}[A-Z0-9]{10}[0-9A-Z]{3}$/i;
 
@@ -70,9 +71,14 @@ export async function uploadDocument(_prev: unknown, formData: FormData) {
   const existing = await prisma.document.findFirst({ where: { vendorId, documentTypeId } });
   // Re-uploading a doc the department sent back counts as a resubmission cycle.
   const isResubmit = existing?.status === DOC_STATUS.CHANGES_REQUESTED || existing?.status === DOC_STATUS.REJECTED;
+
+  // Persist the real bytes to Supabase Storage under a key derived from the
+  // document id, and record that key in storedPath.
+  const bytes = Buffer.from(await file.arrayBuffer());
+  const contentType = file.type || "application/octet-stream";
+
   const data = {
     filename: file.name,
-    storedPath: `/uploads/${vendorId}/${file.name}`,
     sizeKb: Math.round(file.size / 1024),
     status: DOC_STATUS.SUBMITTED,
     reviewNote: null,
@@ -80,12 +86,16 @@ export async function uploadDocument(_prev: unknown, formData: FormData) {
     uploadedAt: new Date(),
   };
   if (existing) {
+    const key = await uploadObject(documentKey(vendorId, existing.id, file.name), bytes, contentType);
     await prisma.document.update({
       where: { id: existing.id },
-      data: isResubmit ? { ...data, revisionCount: { increment: 1 } } : data,
+      data: isResubmit ? { ...data, storedPath: key, revisionCount: { increment: 1 } } : { ...data, storedPath: key },
     });
   } else {
-    await prisma.document.create({ data: { vendorId, documentTypeId, ...data } });
+    // Create first to get the id, then upload under that id and store the key.
+    const created = await prisma.document.create({ data: { vendorId, documentTypeId, ...data } });
+    const key = await uploadObject(documentKey(vendorId, created.id, file.name), bytes, contentType);
+    await prisma.document.update({ where: { id: created.id }, data: { storedPath: key } });
   }
 
   // First activity also marks onboarding as started, if the form save didn't.

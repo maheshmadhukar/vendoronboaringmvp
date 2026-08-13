@@ -1,33 +1,12 @@
-import path from "node:path";
 import { PrismaClient } from "@prisma/client";
-import { PrismaLibSQL } from "@prisma/adapter-libsql";
 
+// Standard Prisma client against Supabase Postgres. The runtime DATABASE_URL is
+// the Supabase transaction pooler (pgBouncer); prisma migrate/db push use
+// DIRECT_URL (see schema.prisma datasource). A single client is cached on
+// globalThis in dev to survive hot-reload.
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
-/**
- * A local "file:" DATABASE_URL is written relative to prisma/schema.prisma
- * (matching how the Prisma CLI resolves it for `db push`/seed), but the raw
- * libSQL client resolves "file:" paths relative to process.cwd() instead —
- * so re-root it here. Remote Turso "libsql://..." URLs pass through untouched.
- */
-function resolveDatabaseUrl(url: string): string {
-  if (!url) {
-    throw new Error(
-      "DATABASE_URL is not set. Copy .env.example to .env (local dev) or set it in your deployment environment.",
-    );
-  }
-  if (!url.startsWith("file:")) return url;
-  const relativePath = url.slice("file:".length);
-  return `file:${path.resolve(process.cwd(), "prisma", relativePath)}`;
-}
-
-const adapter = new PrismaLibSQL({
-  url: resolveDatabaseUrl(process.env.DATABASE_URL as string),
-  authToken: process.env.DATABASE_AUTH_TOKEN,
-});
-
 export const prisma =
-  globalForPrisma.prisma ??
-  new PrismaClient({ adapter, log: ["error", "warn"] });
+  globalForPrisma.prisma ?? new PrismaClient({ log: ["error", "warn"] });
 
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;

@@ -1,16 +1,17 @@
 // Vendor Onboarding Portal — data model
-// NOTE: SQLite (via Prisma) does not support native enums, so status/role
-// fields are Strings with allowed values documented in lib/constants.ts.
+// NOTE: status/role fields are kept as Strings (allowed values documented in
+// lib/constants.ts) rather than native Postgres enums — a deliberate choice to
+// keep lib/constants.ts the single source of truth and avoid churn. Converting
+// to native enums is an optional future cleanup.
 
 generator client {
-  provider        = "prisma-client-js"
-  previewFeatures = ["driverAdapters"]
-  engineType      = "client"
+  provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model Department {

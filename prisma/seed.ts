@@ -1,6 +1,7 @@
+import "dotenv/config";
 import bcrypt from "bcryptjs";
 import { computeDueAt } from "../lib/sla";
-import { prisma } from "../lib/prisma";
+import { prisma } from "./seedClient";
 
 const PW = "demo1234";
 const CUTOFF = 14;
@@ -26,6 +27,10 @@ type ReviewSpec = {
 };
 
 async function main() {
+  // The Supabase pooler role sets a short statement_timeout; the bulk wipe and
+  // large inserts can exceed it. Disable it for this (session-mode) connection.
+  await prisma.$executeRawUnsafe("SET statement_timeout = 0");
+
   // wipe (order matters for FKs)
   await prisma.notification.deleteMany();
   await prisma.auditLog.deleteMany();
@@ -575,6 +580,11 @@ async function main() {
       data: { userId: financeMgr.id, message: "New vendor 'Northline Steel Components' is awaiting your Finance review.", kind: "TASK" },
     });
 
+  // Upload real placeholder files to Supabase Storage for a few showcase
+  // vendors so the document viewers render actual files end-to-end. The rest of
+  // the seeded documents remain "legacy" records (no stored bytes) by design.
+  await seedPlaceholderFiles(["Anugrah Freight Solutions", "Northline Steel Components", "Vertex Cloud Systems"]);
+
   const vendorCount = await prisma.vendor.count();
   console.log(`\n✅ Seed complete. ${vendorCount} vendors across ~12 months.`);
   console.log("Login (password: demo1234):");
@@ -585,6 +595,66 @@ async function main() {
   console.log("  Vendor          karan@anugrahfreight.in");
   console.log("  (Procurement has no login — sign in as Admin and use the Procurement Review nav link)");
   console.log(`\nInvite/OTP signup demo: /invite/${inviteToken}\n`);
+}
+
+/** Build a minimal, valid single-page PDF with the given text lines. */
+function makePlaceholderPdf(lines: string[]): Buffer {
+  const esc = (s: string) => s.replace(/([\\()])/g, "\\$1");
+  const content =
+    "BT\n/F1 16 Tf\n50 780 Td\n20 TL\n" +
+    lines.map((l, i) => (i === 0 ? `(${esc(l)}) Tj` : `T* (${esc(l)}) Tj`)).join("\n") +
+    "\nET";
+  const objs: string[] = [];
+  objs[1] = "<</Type/Catalog/Pages 2 0 R>>";
+  objs[2] = "<</Type/Pages/Kids[3 0 R]/Count 1>>";
+  objs[3] = "<</Type/Page/Parent 2 0 R/MediaBox[0 0 595 842]/Resources<</Font<</F1 5 0 R>>>>/Contents 4 0 R>>";
+  objs[4] = `<</Length ${Buffer.byteLength(content)}>>\nstream\n${content}\nendstream`;
+  objs[5] = "<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>";
+  let pdf = "%PDF-1.4\n";
+  const offsets: number[] = [];
+  for (let i = 1; i < objs.length; i++) {
+    offsets[i] = Buffer.byteLength(pdf);
+    pdf += `${i} 0 obj\n${objs[i]}\nendobj\n`;
+  }
+  const xref = Buffer.byteLength(pdf);
+  pdf += `xref\n0 ${objs.length}\n0000000000 65535 f \n`;
+  for (let i = 1; i < objs.length; i++) pdf += `${String(offsets[i]).padStart(10, "0")} 00000 n \n`;
+  pdf += `trailer\n<</Size ${objs.length}/Root 1 0 R>>\nstartxref\n${xref}\n%%EOF`;
+  return Buffer.from(pdf, "latin1");
+}
+
+async function seedPlaceholderFiles(vendorNames: string[]) {
+  const { createClient } = await import("@supabase/supabase-js");
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) {
+    console.warn("⚠️  Skipping placeholder files — Supabase storage env not set.");
+    return;
+  }
+  const storage = createClient(url, key, { auth: { persistSession: false } }).storage.from("vendor-docs");
+  const vendors = await prisma.vendor.findMany({
+    where: { name: { in: vendorNames } },
+    include: { documents: { include: { documentType: true } } },
+  });
+  let count = 0;
+  for (const v of vendors) {
+    for (const d of v.documents) {
+      const fname = (d.filename ?? `${d.documentType.key.toLowerCase()}.pdf`).replace(/[^A-Za-z0-9._-]/g, "_");
+      const objectKey = `documents/${v.id}/${d.id}/${fname}`;
+      const pdf = makePlaceholderPdf([
+        d.documentType.name,
+        `Vendor: ${v.name}`,
+        `File: ${d.filename ?? "—"}`,
+        "",
+        "Placeholder document generated for the demo dataset.",
+      ]);
+      const { error } = await storage.upload(objectKey, pdf, { contentType: "application/pdf", upsert: true });
+      if (error) { console.warn(`  placeholder upload failed (${v.name}/${d.documentType.key}): ${error.message}`); continue; }
+      await prisma.document.update({ where: { id: d.id }, data: { storedPath: objectKey } });
+      count++;
+    }
+  }
+  console.log(`📄 Uploaded ${count} placeholder files for ${vendors.length} showcase vendors.`);
 }
 
 main()

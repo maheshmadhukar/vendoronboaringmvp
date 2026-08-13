@@ -4,6 +4,65 @@ Running log of debugging/perf work, separate from `SCOPE_NOTES.md` (which covers
 
 ---
 
+## 2026-08-13 — Supabase migration (Phases 0–2 of 7) — branch `supabase-changes`
+
+**Status:** Phases 0, 1, 2 built + verified (build green, 29 tests green, storage round-trip
+verified). **Uncommitted work pushed to branch `supabase-changes`.** Auth/Email/Realtime/AI
+(Phases 3–6) + cutover (7) still to do. Full plan lives in the approved milestone plan.
+
+**Decisions (from the user):** keep Prisma (repoint to Supabase Postgres, not a supabase-js
+rewrite); adopt Supabase Auth; upgrade Storage + Email + Realtime + AI; drop & reseed.
+Doc clause-highlighting: **hybrid** — keep the generated rich view for MSA/NDA/SLA/COC, render
+real files for everything else. Seed real placeholder files for **3 showcase vendors** only.
+
+### Phase 0 — test safety net (NEW)
+- Added **Vitest** + `tests/` covering the pure logic the DB swap must not change:
+  `lib/sla.ts`, `lib/period.ts`, `lib/analytics.ts` selectors. **29 tests**, asserting exact
+  values — the parity gate re-run after Phase 1. `npm test` / `npm run test:watch`.
+
+### Phase 1 — DB engine Prisma → Supabase Postgres
+- `schema.prisma`: provider `sqlite`→`postgresql`, added `directUrl`, dropped the
+  `driverAdapters`/`engineType=client` preview flags. Status fields kept as **String**
+  (source of truth stays `lib/constants.ts`) — native enums deliberately deferred.
+- `lib/prisma.ts` → plain `PrismaClient` (libSQL adapter removed). `prisma.config.ts` +
+  `next.config.ts` stripped of libSQL plumbing. Removed `@libsql/client` +
+  `@prisma/adapter-libsql` deps.
+- ⚠️ **The provisioned Supabase DB was NOT empty** — it already held a more-advanced instance
+  of this app (Supabase Auth linked via `User.authUserId`, `DocumentType.mandatory`, 49
+  vendors / 429 docs, `_prisma_migrations`). Surfaced to the user; **user explicitly consented
+  to wipe & reset**. `db push --force-reset` + reseed done (51 vendors). Orphaned `auth.users`
+  in Supabase's `auth` schema were left (harmless; to be addressed in Phase 3 auth linkage).
+- Prisma 6 blocks `--force-reset` under an AI agent without
+  `PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION=<exact user consent text>`.
+
+### Phase 2 — Supabase Storage (real files)
+- New `lib/storage.ts` (service-role client; `uploadObject` / `signedUrl` / `removeObject`;
+  `isStoredObject` treats legacy `/…` paths as "no real file"). Private bucket **`vendor-docs`**.
+- `uploadDocument` (`app/actions/vendor.ts`) + `replaceBuyerDocTemplateFile`
+  (`app/actions/admin.ts`) now store **real bytes**; `storedPath` holds the object key.
+- New `app/components/DocumentFileView.tsx` (PDF `<object>` / image / empty state). The 4 doc
+  viewers render the real file for standard docs and keep the rich mock view + clause
+  highlighting for MSA/NDA/SLA/COC. Downloads use signed URLs (rich types keep the text blob).
+- Seed uploads **33 placeholder PDFs** for Anugrah/Northline/Vertex (`makePlaceholderPdf` +
+  `seedPlaceholderFiles` in `prisma/seed.ts`). Other vendors' standard docs show a legacy
+  "no file" state by design.
+
+### ⚠️ Seeding hardening (required for Supabase)
+- The pgBouncer **transaction pooler** (`DATABASE_URL`, :6543) drops connections mid-seed
+  (`P1017`); a bulk-delete also hit `statement_timeout` (57014). Fix: new
+  **`prisma/seedClient.ts`** runs the seed over the **direct connection** (`DIRECT_URL`, :5432)
+  with `connection_limit=1`, and `main()` issues `SET statement_timeout = 0`. Seeds reliable now.
+
+### Env / ops
+- `.env` (git-ignored) now holds Supabase creds; `.env.example` rewritten as the Supabase
+  template. Bucket `vendor-docs` created (private). Region `ap-south-1` (matches Vercel `bom1`).
+- To run locally: restart any stale pre-migration `next dev`, then `npm run dev`.
+
+### Next
+- **Phase 3 (Auth)** is next and highest-risk (replaces iron-session/bcrypt/OTP, reworks the
+  `lib/session.ts` RBAC guards + demo persona switcher, maps `auth.users` → `User.authUserId`).
+  Paused for user go-ahead per agreed one-phase-at-a-time cadence.
+
 ## 2026-08-13 — Procurement Review rebuild, SLA bar fixes, flag-to-admin removal, merge with analytics PR
 
 **Status:** Built, merged, committed, pushed (`origin` + `public`). Prod Turso schema pushed and reseeded — live.

@@ -11,12 +11,13 @@
     "db:generate": "prisma generate",
     "db:reset": "prisma db push --force-reset",
     "seed": "tsx prisma/seed.ts",
-    "db:setup": "prisma db push --force-reset && prisma generate && tsx prisma/seed.ts"
+    "db:setup": "prisma db push --force-reset && prisma generate && tsx prisma/seed.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
-    "@libsql/client": "^0.17.4",
-    "@prisma/adapter-libsql": "^6.19.3",
     "@prisma/client": "^6.19.3",
+    "@supabase/supabase-js": "^2.112.3",
     "bcryptjs": "^3.0.3",
     "dotenv": "^16.6.1",
     "iron-session": "^8.0.4",
@@ -33,7 +34,8 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "tsx": "^4.23.12",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.10"
   },
   "allowScripts": {
     "prisma@6.19.3": true,

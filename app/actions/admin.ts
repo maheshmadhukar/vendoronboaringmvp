@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/session";
 import { VSTATUS } from "@/lib/constants";
 import { recomputeVendorStatus, notify, audit, getConfig } from "@/lib/workflow";
+import { templateKey, uploadObject } from "@/lib/storage";
 
 const DOC_FORMATS = ["doc", "pdf", "jpeg"] as const;
 
@@ -172,9 +173,8 @@ export async function setBuyerDocTemplateActive(formData: FormData) {
   revalidatePath("/admin/config");
 }
 
-// Replace the (mocked) default file on a buyer document template. Like every
-// other upload in this app, only filename/size metadata is captured — no
-// file bytes are read or stored.
+// Replace the default file on a buyer document template. The real bytes are
+// uploaded to Supabase Storage and the object key is recorded in storedPath.
 export async function replaceBuyerDocTemplateFile(_prev: unknown, formData: FormData) {
   const admin = await requireAdmin();
   const id = String(formData.get("id") || "");
@@ -184,11 +184,14 @@ export async function replaceBuyerDocTemplateFile(_prev: unknown, formData: Form
   const template = await prisma.buyerDocTemplate.findUnique({ where: { id } });
   if (!template) return { error: "Unknown document template." };
 
+  const bytes = Buffer.from(await file.arrayBuffer());
+  const key = await uploadObject(templateKey(template.key, file.name), bytes, file.type || "application/octet-stream");
+
   await prisma.buyerDocTemplate.update({
     where: { id },
     data: {
       filename: file.name,
-      storedPath: `/templates/${template.key}/${file.name}`,
+      storedPath: key,
       sizeKb: Math.round(file.size / 1024),
       uploadedAt: new Date(),
     },

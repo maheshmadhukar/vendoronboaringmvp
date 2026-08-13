@@ -4,6 +4,8 @@ import Shell from "@/app/components/Shell";
 import { requireVendor } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { getDocumentContent, isRichDocType, linkedSectionIndex } from "@/lib/documentContent";
+import { isStoredObject, signedUrl } from "@/lib/storage";
+import DocumentFileView from "@/app/components/DocumentFileView";
 import { openClarificationDocIds } from "@/lib/vendor";
 import ReplyForm from "@/app/vendor/ReplyForm";
 
@@ -30,6 +32,7 @@ export default async function VendorDocumentPage({ params }: { params: Promise<{
   const content = getDocumentContent(document.documentType.key, document.vendor);
   const rich = isRichDocType(document.documentType.key);
   const linkedIndex = rich && content.kind === "rich" ? linkedSectionIndex(comments, content.sections.length) : null;
+  const fileUrl = !rich && isStoredObject(document.storedPath) ? await signedUrl(document.storedPath) : null;
   const departmentId = comments.length > 0 ? comments[comments.length - 1].departmentId : null;
   const needsClarification = openClarificationDocIds(comments).has(document.id);
   const displayStatus = document.status === "SUBMITTED" && needsClarification ? "CLARIFICATION_REQUESTED" : document.status;
@@ -92,29 +95,14 @@ export default async function VendorDocumentPage({ params }: { params: Promise<{
           </div>
           {commentThread}
         </div>
-      ) : content.kind === "simple" ? (
-        <div className="simple-doc-layout">
+      ) : (
+        <div className="doc-layout">
           <div>
-            <div className="doc-preview" />
-            <p className="doc-preview-name">{content.previewLabel}</p>
+            <DocumentFileView url={fileUrl} filename={document.filename} />
           </div>
-          <div>
-            <dl className="field-list">
-              {content.fields.map((f, i) => (
-                <div key={i}>
-                  <dt>{f.label}</dt>
-                  <dd style={f.tone === "warn" ? { color: "var(--warn)" } : f.tone === "bad" ? { color: "var(--bad)" } : undefined}>{f.value}</dd>
-                </div>
-              ))}
-              <div>
-                <dt>Verification</dt>
-                <dd><span className={`chip ${content.verification.tone}`}>{content.verification.tone === "good" ? "Verified" : "Flagged"}</span> — {content.verification.text}</dd>
-              </div>
-            </dl>
-            <div style={{ marginTop: 18 }}>{commentThread}</div>
-          </div>
+          {commentThread}
         </div>
-      ) : null}
+      )}
     </Shell>
   );
 }
