@@ -3,6 +3,7 @@ import Shell from "@/app/components/Shell";
 import { Empty } from "@/app/components/ui";
 import { requireAdmin } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
+import { getConfig } from "@/lib/workflow";
 import { fmtMoney, fmtMoneyCompact } from "@/lib/format";
 import { resolvePeriod, previousPeriod, type PeriodMode } from "@/lib/period";
 import {
@@ -30,7 +31,7 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
   const period = resolvePeriod({ mode: "year", ...sp });
   const prev = previousPeriod(period);
 
-  const [vendorsRaw, departments, docTypeCount] = await Promise.all([
+  const [vendorsRaw, departments, docTypeCount, cfg] = await Promise.all([
     prisma.vendor.findMany({
       include: {
         deptReviews: { include: { department: true } },
@@ -40,6 +41,7 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
     }),
     prisma.department.findMany(),
     prisma.documentType.count({ where: { active: true } }),
+    getConfig(),
   ]);
   const vendors = vendorsRaw as VendorRow[];
 
@@ -52,7 +54,7 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
   const trends = computeTrends(vendors, 12);
   const stageTime = computeStageTime(vendors, departments);
 
-  const slaTarget = departments[0]?.slaDays ?? 5;
+  const slaTarget = cfg.slaDaysDefault;
   const stageRows = [
     { label: "Vendor prep", value: stageTime.prep, color: "var(--ink-faint)" },
     ...stageTime.perDept.map((d) => ({ label: d.label, value: d.avgDays, color: "var(--accent)" })),
@@ -71,7 +73,7 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
       <div className="page-head">
         <div>
           <h1>Onboarding Analytics</h1>
-          <p>Pipeline health, department bottlenecks, and what operations should act on today — for the Procurement Head, department managers, and the ops team.</p>
+          <p>Pipeline health, department bottlenecks, and what operations should act on today — for department managers and the ops team.</p>
         </div>
       </div>
 
@@ -112,17 +114,11 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
       <div className="an-section">
         <SectionHeader
           title="Executive Summary"
-          help="Row 1 is what we delivered (lagging); row 2 is what's coming based on predictive data (leading)."
+          help="Core throughput, pending work, and where you're most at risk of missing SLA."
         />
-        <div className="grid-4" style={{ marginBottom: 16 }}>
-          <KpiCard label="Vendors onboarded" value={String(exec.onboarded.value)} tags={["lag", "biz"]} deltaPct={exec.onboarded.deltaPct} sub={`${period.label} · completed onboardings`} />
-          <KpiCard label="Total onboarded value" value={fmtMoneyCompact(exec.onboardedValue.value)} tags={["lag", "biz"]} deltaPct={exec.onboardedValue.deltaPct} sub="Contract value onboarded" />
-          <KpiCard label="Avg onboarding time" value={exec.avgOnboardDays.has ? `${fmtDays(exec.avgOnboardDays.value)}d` : "—"} tags={["lag", "biz"]} deltaPct={exec.avgOnboardDays.deltaPct} higherIsBetter={false} sub="Submit → onboarded" />
-          <KpiCard label="Acceptance rate" value={exec.acceptanceRate.has ? `${exec.acceptanceRate.value}%` : "—"} tags={["lag", "biz"]} deltaPct={exec.acceptanceRate.deltaPct} deltaSuffix="pt" sub="Approved of decided" />
-        </div>
         <div className="grid-4">
-          <KpiCard label="Active pipeline" value={String(exec.activePipeline)} tags={["lead", "biz"]} sub="Vendors in flight now" />
-          <KpiCard label="Expected pipeline value" value={fmtMoneyCompact(exec.pipelineValue)} tags={["lead", "biz"]} sub="Contract value in progress" />
+          <KpiCard label="Vendors onboarded" value={String(exec.onboarded.value)} tags={["lag", "biz"]} deltaPct={exec.onboarded.deltaPct} sub={`${period.label} · completed onboardings`} />
+          <KpiCard label="Avg onboarding time" value={exec.avgOnboardDays.has ? `${fmtDays(exec.avgOnboardDays.value)}d` : "—"} tags={["lag", "biz"]} deltaPct={exec.avgOnboardDays.deltaPct} higherIsBetter={false} sub="Submit → onboarded" />
           <KpiCard label="Pending approvals" value={String(exec.pendingApprovals)} tags={["lead", "user"]} sub="Department reviews awaiting action" />
           <KpiCard label="Vendors at SLA risk" value={String(exec.atRisk)} tags={["lead", "user"]} sub="Amber or breached, needs attention" />
         </div>
@@ -135,36 +131,39 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
           tags={["lead", "biz"]}
           help={`Where the cohort invited in ${period.label} is today, and what the in-flight pipeline is likely to convert to.`}
         />
-        <div className="pipeline-split">
-          <ChartCard title="Onboarding funnel" sub={`Cohort invited in ${period.label} · conversion and drop-off by stage`}>
-            {funnel.stages[0].count === 0 ? (
-              <Empty title="No vendors invited in this period" hint="Pick a wider range to see the funnel." />
-            ) : (
-              <>
-                <FunnelBars stages={funnel.stages} />
-                <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14, alignItems: "center", fontSize: 12.5 }}>
-                  <span className="sub">Rejected (of cohort):</span>
-                  <span className="tnum" style={{ fontWeight: 700, color: funnel.rejected ? "var(--bad)" : "var(--ink-faint)" }}>{funnel.rejected}</span>
-                </div>
-              </>
-            )}
-          </ChartCard>
+        <details className="an-collapsible">
+          <summary>Show funnel &amp; forecast</summary>
+          <div className="pipeline-split">
+            <ChartCard title="Onboarding funnel" sub={`Cohort invited in ${period.label} · conversion and drop-off by stage`}>
+              {funnel.stages[0].count === 0 ? (
+                <Empty title="No vendors invited in this period" hint="Pick a wider range to see the funnel." />
+              ) : (
+                <>
+                  <FunnelBars stages={funnel.stages} />
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14, alignItems: "center", fontSize: 12.5 }}>
+                    <span className="sub">Rejected (of cohort):</span>
+                    <span className="tnum" style={{ fontWeight: 700, color: funnel.rejected ? "var(--bad)" : "var(--ink-faint)" }}>{funnel.rejected}</span>
+                  </div>
+                </>
+              )}
+            </ChartCard>
 
-          <ChartCard title="Pipeline health" sub="Leading view of in-flight work">
-            <div>
-              <div className="stat-row"><div className="sr-top"><span className="sr-label">Active vendors in progress</span><span className="sr-value">{health.active}</span></div></div>
-              <div className="stat-row"><div className="sr-top"><span className="sr-label">Expected onboarding value</span><span className="sr-value">{fmtMoney(health.expectedValue)}</span></div></div>
-              <div className="stat-row">
-                <div className="sr-top"><span className="sr-label">Projected approvals (run-rate)</span><span className="sr-value">{health.projectedApprovals ?? "—"}</span></div>
-                <span className="sub" style={{ fontSize: 11 }}>Active × historical acceptance {health.acceptRatePct != null ? `(${health.acceptRatePct}%)` : ""}</span>
+            <ChartCard title="Pipeline health" sub="Leading view of in-flight work">
+              <div>
+                <div className="stat-row"><div className="sr-top"><span className="sr-label">Active vendors in progress</span><span className="sr-value">{health.active}</span></div></div>
+                <div className="stat-row"><div className="sr-top"><span className="sr-label">Expected onboarding value</span><span className="sr-value">{fmtMoney(health.expectedValue)}</span></div></div>
+                <div className="stat-row">
+                  <div className="sr-top"><span className="sr-label">Projected approvals (run-rate)</span><span className="sr-value">{health.projectedApprovals ?? "—"}</span></div>
+                  <span className="sub" style={{ fontSize: 11 }}>Active × historical acceptance {health.acceptRatePct != null ? `(${health.acceptRatePct}%)` : ""}</span>
+                </div>
+                <div className="stat-row">
+                  <div className="sr-top"><span className="sr-label">On track vs at risk</span><span className="sr-value"><span style={{ color: "var(--good)" }}>{health.onTrack}</span> / <span style={{ color: health.atRisk ? "var(--bad)" : "var(--ink-faint)" }}>{health.atRisk}</span></span></div>
+                  <span className="sub" style={{ fontSize: 11 }}>At-risk = a pending review already past SLA</span>
+                </div>
               </div>
-              <div className="stat-row">
-                <div className="sr-top"><span className="sr-label">On track vs at risk</span><span className="sr-value"><span style={{ color: "var(--good)" }}>{health.onTrack}</span> / <span style={{ color: health.atRisk ? "var(--bad)" : "var(--ink-faint)" }}>{health.atRisk}</span></span></div>
-                <span className="sub" style={{ fontSize: 11 }}>At-risk = a pending review already past SLA</span>
-              </div>
-            </div>
-          </ChartCard>
-        </div>
+            </ChartCard>
+          </div>
+        </details>
       </div>
 
       {/* ============ Section 3 — Department Bottlenecks ============ */}
@@ -201,6 +200,14 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
             </div>
           </ChartCard>
         </div>
+        <div style={{ marginTop: 18 }}>
+          <ChartCard
+            title="Where time is spent"
+            sub="Vendor prep is sequential; the three department reviews run in parallel (not summed). Critical path = the slowest department, which actually gates onboarding."
+          >
+            <HBars unit="d" labelWidth={100} rows={stageRows} />
+          </ChartCard>
+        </div>
       </div>
 
       {/* ============ Section 4 — Vendor Behavior & Quality ============ */}
@@ -210,7 +217,22 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
           tags={["lead", "user"]}
           help="How vendors move through onboarding, and how much rework the process creates."
         />
-        <div className="grid-2">
+        <ChartCard title="Rework & quality" sub={`Change requests, revisions, and why documents get sent back · ${period.label}`}>
+          <div className="grid-3" style={{ marginBottom: 14 }}>
+            <div className="stat"><div className="label">Change-request rate</div><div className="value" style={{ color: quality.changeRequestRate ? "var(--warn)" : undefined }}>{fmtPct(quality.changeRequestRate)}</div></div>
+            <div className="stat"><div className="label">Avg revisions / vendor</div><div className="value">{quality.avgRevisions == null ? "—" : quality.avgRevisions.toFixed(2)}</div></div>
+            <div className="stat"><div className="label">Most rejected doc</div><div className="value" style={{ fontSize: 14, lineHeight: 1.3 }}>{quality.mostRejected ? quality.mostRejected.name : "—"}</div>{quality.mostRejected ? <div className="delta">{quality.mostRejected.count} times</div> : null}</div>
+          </div>
+          <div className="section-label" style={{ marginBottom: 6 }}>Top rejection reasons</div>
+          {quality.reasons.length === 0 ? (
+            <Empty title="No categorized rejections yet" hint="Reasons appear as departments reject or request changes." />
+          ) : (
+            <HBars labelWidth={150} rows={quality.reasons.map((r) => ({ label: r.label, value: r.count, color: "var(--bad)" }))} />
+          )}
+        </ChartCard>
+
+        <details className="an-collapsible" style={{ marginTop: 18 }}>
+          <summary>Show vendor engagement</summary>
           <ChartCard title="Vendor engagement" sub="Time-in-stage and completeness across active vendors">
             <div className="grid-3" style={{ marginBottom: 14 }}>
               <div className="stat"><div className="label">To register</div><div className="value">{fmtDays(engagement.timeToRegister)}<span style={{ fontSize: 13 }}>d</span></div></div>
@@ -223,21 +245,7 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
             <div className="section-label" style={{ marginBottom: 6 }}>Document completion — {engagement.activeCount} active vendors</div>
             <DocCompletionDist data={engagement.distribution} />
           </ChartCard>
-
-          <ChartCard title="Rework & quality" sub={`Change requests, revisions, and why documents get sent back · ${period.label}`}>
-            <div className="grid-3" style={{ marginBottom: 14 }}>
-              <div className="stat"><div className="label">Change-request rate</div><div className="value" style={{ color: quality.changeRequestRate ? "var(--warn)" : undefined }}>{fmtPct(quality.changeRequestRate)}</div></div>
-              <div className="stat"><div className="label">Avg revisions / vendor</div><div className="value">{quality.avgRevisions == null ? "—" : quality.avgRevisions.toFixed(2)}</div></div>
-              <div className="stat"><div className="label">Most rejected doc</div><div className="value" style={{ fontSize: 14, lineHeight: 1.3 }}>{quality.mostRejected ? quality.mostRejected.name : "—"}</div>{quality.mostRejected ? <div className="delta">{quality.mostRejected.count} times</div> : null}</div>
-            </div>
-            <div className="section-label" style={{ marginBottom: 6 }}>Top rejection reasons</div>
-            {quality.reasons.length === 0 ? (
-              <Empty title="No categorized rejections yet" hint="Reasons appear as departments reject or request changes." />
-            ) : (
-              <HBars labelWidth={150} rows={quality.reasons.map((r) => ({ label: r.label, value: r.count, color: "var(--bad)" }))} />
-            )}
-          </ChartCard>
-        </div>
+        </details>
       </div>
 
       {/* ============ Section 5 — Trends ============ */}
@@ -250,14 +258,6 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
         <ChartCard title="Onboardings & cycle time" sub="Monthly, last 12 months — volume vs average onboarding time">
           <TrendLineChart data={trends} />
         </ChartCard>
-        <div style={{ marginTop: 18 }}>
-          <ChartCard
-            title="Where time is spent"
-            sub="Vendor prep is sequential; the four department reviews run in parallel (not summed). Critical path = the slowest department, which actually gates onboarding."
-          >
-            <HBars unit="d" labelWidth={100} rows={stageRows} />
-          </ChartCard>
-        </div>
       </div>
     </Shell>
   );

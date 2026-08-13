@@ -2,7 +2,7 @@ import Shell from "@/app/components/Shell";
 import { requireAdmin } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { getConfig } from "@/lib/workflow";
-import { DEPT_LABEL } from "@/lib/constants";
+import { DEPT, DEPT_LABEL } from "@/lib/constants";
 import { updateDocType, setDocumentTypeActive, setBuyerDocTemplateActive } from "@/app/actions/admin";
 import { paginate } from "@/lib/paginate";
 import Pagination from "@/app/components/Pagination";
@@ -21,7 +21,9 @@ export default async function ConfigPage({ searchParams }: { searchParams: Promi
   const depts = await prisma.department.findMany({ orderBy: { name: "asc" } });
   const docTypes = await prisma.documentType.findMany({ orderBy: { order: "asc" } });
   const buyerDocTemplates = await prisma.buyerDocTemplate.findMany({ orderBy: { order: "asc" } });
-  const docTypesPagination = paginate(docTypes, Number(sp.docTypesPage) || 1);
+  const reviewDepts = depts.filter((d) => d.key !== DEPT.PROCUREMENT);
+  const visibleDocTypes = docTypes.filter((t) => t.departmentKey !== DEPT.PROCUREMENT);
+  const docTypesPagination = paginate(visibleDocTypes, Number(sp.docTypesPage) || 1);
   const templatesPagination = paginate(buyerDocTemplates, Number(sp.templatesPage) || 1);
 
   return (
@@ -32,7 +34,7 @@ export default async function ConfigPage({ searchParams }: { searchParams: Promi
 
       <div className="card card-pad">
         <div className="card-title">SLA, gates &amp; notifications</div>
-        <ConfigForm cfg={cfg} depts={depts} />
+        <ConfigForm cfg={cfg} depts={reviewDepts} />
       </div>
 
       <div className="card" style={{ marginTop: 18 }}>
@@ -74,7 +76,7 @@ export default async function ConfigPage({ searchParams }: { searchParams: Promi
         </div>
         <div className="card-pad">
           <div className="section-label">Add a document type</div>
-          <AddDocumentTypeForm depts={depts.map((d) => ({ id: d.id, label: DEPT_LABEL[d.key] ?? d.name }))} formats={DOC_FORMATS as unknown as string[]} />
+          <AddDocumentTypeForm depts={reviewDepts.map((d) => ({ id: d.id, label: DEPT_LABEL[d.key] ?? d.name }))} formats={DOC_FORMATS as unknown as string[]} />
         </div>
       </div>
 

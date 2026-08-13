@@ -248,6 +248,10 @@ h1,h2,h3,h4{ margin:0; }
 .sec-head .sec-title-row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
 .sec-head h2{ font-size:16px; font-weight:680; letter-spacing:-.01em; margin:0; }
 .sec-head p{ margin:4px 0 0; font-size:12.5px; color:var(--ink-soft); max-width:70ch; }
+.an-collapsible > summary{ cursor:pointer; list-style:none; display:flex; align-items:center; gap:8px; font-family:var(--font-mono); font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-soft); padding:6px 0 14px; }
+.an-collapsible > summary::-webkit-details-marker{ display:none; }
+.an-collapsible > summary::before{ content:"▸"; font-size:10px; }
+.an-collapsible[open] > summary::before{ content:"▾"; }
 
 .badge{ display:inline-flex; align-items:center; gap:4px; font-family:var(--font-mono); font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; padding:2px 7px; border-radius:999px; border:1px solid transparent; white-space:nowrap; }
 .badge.lead{ background:var(--accent-fill); color:var(--accent-ink); }
