@@ -2,6 +2,7 @@ import { prisma } from "./prisma";
 import { VSTATUS, REVIEW_STATUS, SLA_STATE, DOC_STATUS, ROLE, DEPT_LABEL } from "./constants";
 import { computeDueAt, isBreached, workingDaysLeft } from "./sla";
 import { getBuyerCoveredKeys } from "./vendor";
+import { sendEmail, notificationEmail, emailEnabled, appUrl } from "./email";
 
 export async function getConfig() {
   // upsert (not find-then-create) so two concurrent cold-start lambdas can't
@@ -13,6 +14,14 @@ export async function getConfig() {
   });
 }
 
+// Subject + CTA copy per notification kind. Falls through to a generic label.
+const EMAIL_KIND: Record<string, { subject: string; cta: string; href: string }> = {
+  STATUS: { subject: "Your onboarding status changed", cta: "View your onboarding", href: "/vendor" },
+  TASK: { subject: "A vendor review needs your attention", cta: "Open review queue", href: "/dept" },
+  AUDIT: { subject: "Vendor activity update", cta: "Open dashboard", href: "/admin" },
+  INFO: { subject: "Notification", cta: "Open dashboard", href: "/" },
+};
+
 export async function notify(
   userId: string,
   message: string,
@@ -21,6 +30,27 @@ export async function notify(
 ) {
   await prisma.notification.create({
     data: { userId, message, kind, vendorId: vendorId ?? null },
+  });
+
+  // Mirror the in-app notification to email (best-effort; no-op when email is
+  // disabled). The Config.notify* gating already happened at the call site, so
+  // any notify() worth writing in-app is worth emailing.
+  if (!emailEnabled()) return;
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { email: true, active: true },
+  });
+  if (!user?.active) return;
+  const meta = EMAIL_KIND[kind] ?? EMAIL_KIND.INFO;
+  await sendEmail({
+    to: user.email,
+    subject: meta.subject,
+    html: notificationEmail({
+      heading: meta.subject,
+      body: message,
+      ctaLabel: meta.cta,
+      ctaHref: `${appUrl()}${meta.href}`,
+    }),
   });
 }
 
