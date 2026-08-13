@@ -1,5 +1,4 @@
 import "dotenv/config";
-import bcrypt from "bcryptjs";
 import { computeDueAt } from "../lib/sla";
 import { prisma } from "./seedClient";
 
@@ -46,8 +45,6 @@ async function main() {
   await prisma.department.deleteMany();
   await prisma.config.deleteMany();
 
-  const hash = await bcrypt.hash(PW, 10);
-
   await prisma.config.create({ data: { id: 1 } });
 
   // Departments
@@ -67,7 +64,7 @@ async function main() {
 
   // Admin
   const adminUser = await prisma.user.create({
-    data: { email: "admin@buyer.com", name: "Aarti Nair", role: "ADMIN", passwordHash: hash },
+    data: { email: "admin@buyer.com", name: "Aarti Nair", role: "ADMIN" },
   });
 
   // Dept managers — one per department (Procurement has no standalone login;
@@ -80,7 +77,7 @@ async function main() {
   const mgrByDept: Record<string, string> = {};
   for (const m of mgr) {
     const u = await prisma.user.create({
-      data: { email: m.email, name: m.name, role: "DEPT", passwordHash: hash, departmentId: depts[m.dept] },
+      data: { email: m.email, name: m.name, role: "DEPT", departmentId: depts[m.dept] },
     });
     await prisma.department.update({ where: { id: depts[m.dept] }, data: { managerId: u.id } });
     mgrByDept[m.dept] = u.id;
@@ -198,7 +195,7 @@ async function main() {
       await prisma.user.create({
         data: {
           email: opts.email.toLowerCase(), name: opts.accountName ?? opts.name,
-          role: "VENDOR", passwordHash: hash, vendorId: vendor.id, active: true,
+          role: "VENDOR", vendorId: vendor.id, active: true,
         },
       });
     }

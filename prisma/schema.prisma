@@ -29,7 +29,6 @@ model User {
   id           String   @id @default(cuid())
   email        String   @unique
   name         String
-  passwordHash String?  // legacy (pre-Supabase-Auth); unused at runtime
   authUserId   String?  @unique // Supabase auth.users id — the identity link
   role         String   // ADMIN | DEPT | VENDOR
   active       Boolean  @default(true)

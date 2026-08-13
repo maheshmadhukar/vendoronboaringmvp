@@ -16,8 +16,10 @@ lives in the approved milestone plan.
 - Seeds must run over the direct connection (already handled by `prisma/seedClient.ts`); a full
   reseed takes several minutes (network round-trips to ap-south-1).
 - Phase 4 (Email) **code done**; ops pending (RESEND_API_KEY + verified sender + Supabase
-  Auth SMTP + live send test). Phase 5 (Realtime) **code + live infra done** (see below);
-  pending a two-session browser verify. Next up: **Phase 6 (AI review)**.
+  Auth SMTP + live send test). Phase 5 (Realtime) **done + verified live**. Phase 6 (AI)
+  **skipped** by user. Phase 7 (cleanup) **code + docs done**; `passwordHash`
+  column intentionally left in the live DB (schema drift, harmless). Migration effectively
+  complete bar one ops item (Resend key + Supabase Auth SMTP for Phase 4 email).
 - Deferred cleanup (Phase 7): uninstall unused `iron-session`; drop legacy `passwordHash`
   column + bcrypt from seed; update `README.md` / `SCOPE_NOTES.md`.
 
@@ -62,6 +64,28 @@ real files for everything else. Seed real placeholder files for **3 showcase ven
   read `User` without granting `authenticated` SELECT on `User` (which would expose emails).
   Verified via role-simulation: vendor sees only own notifications & 0 Vendor/DeptReview
   rows; admin/dept see the full pipeline.
+
+### Phase 6 — AI review — SKIPPED
+- User chose to skip Phase 6 (real Claude-powered document review replacing the mocked
+  `aiRisks` in `lib/documentContent.ts`). No code written; `@anthropic-ai/sdk` not
+  installed. `Config.aiReviewDefault` / `Document.aiReviewEnabled` remain as the mocked
+  toggle. Revisit later if AI review is wanted.
+
+### Phase 7 — Cutover / cleanup — code + docs done, live column-drop pending
+- Removed the legacy auth debt: dropped `User.passwordHash` from `schema.prisma`; stripped
+  `bcryptjs` + all `passwordHash: hash` writes from `prisma/seed.ts` (kept `PW` — still used
+  to create Supabase Auth users). Uninstalled **`iron-session`**, **`bcryptjs`**,
+  **`@types/bcryptjs`** (all zero code refs post-Phase-3). `prisma generate` re-run.
+- Docs refreshed: `README.md` stack line (SQLite/iron-session/bcrypt → Supabase
+  Postgres/Auth/Storage), setup steps, invite demo (OTP → Supabase Auth user), removed the
+  already-deleted flag-to-admin bullets, and the Notes section (real file storage + Resend
+  email). `SCOPE_NOTES.md` "Simplified" section updated the same way.
+- ✅ tsc clean, 29 tests green.
+- **Column left in place (user decision).** `schema.prisma` no longer has `passwordHash`
+  but the live DB column remains (harmless, nullable, unwritten). ⚠️ Known **schema drift**:
+  a plain `prisma db push` will offer to drop it and require `--accept-data-loss`;
+  `db:setup`/`db:reset` (`--force-reset`) drop it automatically on the next reseed. Drop
+  anytime with `prisma db push --accept-data-loss`.
 
 ### Phase 4 — Email (Resend) — code done, ops pending
 - New **`lib/email.ts`**: Resend client, `sendEmail()` (best-effort — swallows all

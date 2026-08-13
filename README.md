@@ -4,22 +4,24 @@ A functional, click-through MVP of a self-service **Vendor Onboarding Portal** w
 role-based access control (RBAC) enforced at both the **route** and **data** level.
 Built from the VMS wireframes and the `Prototype` scope document.
 
-**Stack:** Next.js 16 (App Router, TypeScript) · Prisma + SQLite · iron-session (auth) · bcryptjs · server-enforced RBAC. Responsive (desktop + mobile web).
+**Stack:** Next.js 16 (App Router, TypeScript) · Prisma + Supabase Postgres · Supabase Auth · Supabase Storage · server-enforced RBAC. Responsive (desktop + mobile web).
 
 ## Run it
 
-> Requires Node. This machine had Node installed to `~/.local/node` — if `node`
-> isn't on your PATH, run: `export PATH="$HOME/.local/node/bin:$PATH"`
+> Requires Node and a Supabase project (Postgres + Auth + a private `vendor-docs`
+> Storage bucket). Fill `.env` from `.env.example` with the project's connection
+> strings and API keys before seeding.
 
 ```bash
 cd vendor-onboarding-mvp
-cp .env.example .env          # first time only
+cp .env.example .env          # first time only — then fill in Supabase creds
 npm install
-npm run db:setup              # create SQLite db + generate client + seed demo data
+npm run db:setup              # push schema to Supabase Postgres + generate client + seed demo data
 npm run dev                   # http://localhost:3000
 ```
 
-To reset demo data at any time: `npm run db:setup`.
+To reset demo data at any time: `npm run db:setup`. Seeds run over the direct
+connection (`DIRECT_URL`); a full reseed takes a few minutes over the network.
 
 ## Demo accounts (password: `demo1234`)
 
@@ -35,8 +37,8 @@ Each department has exactly one manager account. Procurement has no
 standalone login — sign in as **Admin**, whose sidebar has a **Procurement
 Review** link that reviews Procurement's routed documents.
 
-**Invite / OTP signup demo:** open `/invite/demo-invite-meridian` (the OTP is
-shown on the verify screen, since email is simulated).
+**Invite signup demo:** open `/invite/demo-invite-meridian` — accepting the
+invite creates a Supabase Auth user (password `demo1234`) and signs in.
 
 ## What to try
 
@@ -44,13 +46,12 @@ shown on the verify screen, since email is simulated).
   → re-upload in **Documents**. Also try the **reply box** under Clarification
   history on the Overview page after a department asks for clarification.
 - **Finance manager**: review queue → open a vendor → per document, **Approve /
-  Reject / Ask for clarification** (comment required for reject/clarify), plus
-  **Flag to admin** at the vendor level. You only see **Finance** documents and
-  cannot open another department's flow.
-- **Admin**: Status Dashboard (flagged + final-approval queue), **Access & Invites**
+  Reject / Ask for clarification** (comment required for reject/clarify). You only
+  see **Finance** documents and cannot open another department's flow.
+- **Admin**: Status Dashboard (SLA + final-approval queue), **Access & Invites**
   (invite a vendor, grant/revoke access, assign managers), **Configuration**
   (SLA/cutoff, approval gate, notifications, document rules), **Analytics**, and per
-  vendor: **halt**, **final approval**, **clear flag**.
+  vendor: **halt**, **final approval**.
 
 ## Personas & RBAC
 
@@ -58,9 +59,8 @@ shown on the verify screen, since email is simulated).
   final approval, analytics.
 - **Buyer Dept User** (HR / Legal / Finance): reviews only their own
   department's routed documents; read-only on vendor data; per document,
-  Approve / Reject / Ask for clarification, plus Flag-to-admin at the vendor
-  level. Procurement has no dept login — Admin acts as its reviewer from the
-  **Procurement Review** sidebar link.
+  Approve / Reject / Ask for clarification. Procurement has no dept login —
+  Admin acts as its reviewer from the **Procurement Review** sidebar link.
 - **Vendor**: invite-only signup, onboarding form, document upload (all in one go),
   real-time status, and a reply box on any clarification a department asks for.
 
@@ -69,6 +69,8 @@ RBAC is enforced server-side in every page and Server Action via
 out-of-role route access returns the dedicated `/unauthorized` screen.
 
 ## Notes
-- This is a prototype: file uploads are mocked (filename recorded, no bytes stored),
-  emails are simulated (shown in-app), and AI auto-review is a mocked toggle.
+- Documents: standard uploads store **real bytes** in Supabase Storage (private
+  `vendor-docs` bucket, served via signed URLs); MSA/NDA/SLA/COC render a generated
+  rich view with clause highlighting. Notifications email via **Resend** when
+  `RESEND_API_KEY` is set (otherwise in-app only); AI auto-review is still a mocked toggle.
 - See **`SCOPE_NOTES.md`** for scope mapping, resolved open questions, and known gaps.

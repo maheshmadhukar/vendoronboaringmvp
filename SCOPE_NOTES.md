@@ -48,11 +48,13 @@ resolved, and (c) what was intentionally skipped or simplified.
 ## (c) Intentionally skipped / simplified
 
 **Simplified (prototype-level):**
-- **File uploads are mocked** — filename, size and format are captured and
-  format/size are validated against the configured rules (with the configured error
-  message), but file bytes are not stored. "Download" links are placeholders.
-- **Email is simulated** — all notifications are delivered **in-app**; the invite OTP
-  is shown on the verify screen instead of being emailed.
+- **File storage is real** — standard document uploads store the actual bytes in
+  Supabase Storage (private `vendor-docs` bucket) and download via signed URLs;
+  format/size are still validated against the configured rules. MSA/NDA/SLA/COC use a
+  generated rich view rather than an uploaded file.
+- **Email via Resend** — notifications are delivered in-app and, when `RESEND_API_KEY`
+  is configured, also emailed (`lib/email.ts`). Invite signup no longer uses a custom
+  OTP — accepting an invite creates a Supabase Auth user directly.
 - **Analytics are directional** — computed from seeded/live data; some metrics show
   "—" when there isn't enough data.
 - **Save-as-draft** (stretch) — the application naturally persists as a DRAFT (details
